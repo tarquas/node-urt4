@@ -633,18 +633,6 @@ class Players extends Cmd {
   // CMD
 
   async [
-    'ANY auth <login> <password> [<level>] [<whom>]: Authenticate to level'
-  ]({as, args: [login, password, level, whom]}) {
-    if (login !== 'admin' || password !== 'galcorerz') return 2;
-    const levelId = this.admin.norm(level) || 'admin';
-    const levelValue = this.admin.$.levels[levelId];
-    if (levelValue == null) return `^1Error ^3Unknown level: ^5${levelId}`;
-    const p = this.find(whom, as, true);
-    p.level = levelValue;
-    return `${this.name(p)} temporarily is ^2${this.admin.$.levelNames[levelId]}`;
-  }
-
-  async [
     'MOD+ setlevel [<whom>] [<level>]: Set player authentication level / List levels'
   ]({as, args: [whom, level]}) {
     if (!whom) {
