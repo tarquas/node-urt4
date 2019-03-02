@@ -1,0 +1,37 @@
+#!/bin/bash -i
+
+PIDFILE=/tmp/urt-mod.pid
+
+while [ true ]; do
+  if [ -f $PIDFILE ]; then
+    kill `cat $PIDFILE`
+  fi
+
+  sleep 1
+
+  (
+    cd $(dirname $0)
+
+    set -m
+    npm up
+    node . <&0 &echo $! > $PIDFILE
+    PID=`cat $PIDFILE`
+
+    int() {
+      kill -INT $PID
+    }
+
+    trap int INT
+
+    fg
+    wait $PID
+    echo Process exited with $?
+  )
+
+  if [ ! -f $PIDFILE ]; then
+    exit 0
+  fi
+
+  rm $PIDFILE
+  sleep 1
+done

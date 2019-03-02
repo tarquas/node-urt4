@@ -1,0 +1,29 @@
+{
+  "name": "node-urt4",
+  "version": "0.1.0",
+  "description": "A game mod for Node.js of Urban Terror 4 game.",
+  "main": "src/app/index.js",
+  "directories": {
+    "lib": "lib"
+  },
+  "scripts": {
+    "test": "mocha"
+  },
+  "keywords": [
+    "urt",
+    "urban",
+    "terror",
+    "mod",
+    "admin",
+    "node",
+    "javascript",
+    "trainer"
+  ],
+  "author": "Taras Mykhailovych",
+  "license": "MIT",
+  "dependencies": {
+    "axios": "^0.18.0",
+    "clasync": "^0.3.3",
+    "shell-quote": "^1.6.1"
+  }
+}

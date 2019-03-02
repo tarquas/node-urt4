@@ -1,0 +1,55 @@
+#!/bin/sh
+DIR=/home/urt/node-urt4
+USER=urt
+
+### BEGIN INIT INFO
+# Provides:          urt-engine
+# Required-Start:    $all
+# Required-Stop:
+# Default-Start:     2 3 4 5
+# Default-Stop:
+# Short-Description: Starts URT engine.
+### END INIT INFO
+
+PIDFILE=/tmp/urt-engine.pid
+
+start() {
+  echo -n "Starting URT engine... "
+  screen -dmS urt-engine-guns su "$USER" -s /bin/bash -c "$DIR/urt-engine"
+  echo "OK"
+}
+stop() {
+  if [ -f $PIDFILE ]; then
+    echo -n "Stopping URT engine... "
+    PID=$(cat $PIDFILE)
+    rm $PIDFILE
+    kill $PID
+    wait $PID
+    echo "OK"
+  fi
+}
+restart() {
+  stop
+  sleep 2
+  start
+}
+
+case "$1" in
+  start)
+    start
+  ;;
+  stop)
+    stop
+  ;;
+  restart|reload)
+    restart
+  ;;
+  status)
+  [ -f $PIDFILE ] && echo "URT engine is running." || echo "URT engine is stopped."
+  ;;
+  *)
+  echo $"Usage: $0 {start|stop|restart|status}"
+  exit 1
+esac
+
+exit $?

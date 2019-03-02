@@ -1,3 +1,13 @@
+# node-urt4
+/build/
+/ioq3/
+/lib/
+/q3ut4/
+/src/app/config/fun-maps.js
+/src/app/config/jump-maps.js
+/src/app/config/rules.js
+/package-lock.json
+
 # Logs
 logs
 *.log
