@@ -1,7 +1,7 @@
 const fs = require('fs');
-const funMaps = fs.existsSync('./fun-maps.js') ? require('./fun-maps.js') : require('./fun-maps-bundle.js');
-const jumpMaps = fs.existsSync('./jump-maps.js') ? require('./jump-maps.js') : require('./jump-maps-bundle.js');
-const rules = fs.existsSync('./rules.js') ? require('./rules.js') : require('./rules-bundle.js');
+const funMaps = fs.existsSync(`${__dirname}/fun-maps.js`) ? require('./fun-maps') : require('./fun-maps-bundle');
+const jumpMaps = fs.existsSync(`${__dirname}/jump-maps.js`) ? require('./jump-maps') : require('./jump-maps-bundle');
+const rules = fs.existsSync(`${__dirname}/rules.js`) ? require('./rules') : require('./rules-bundle');
 
 module.exports = {
   defaults: {
