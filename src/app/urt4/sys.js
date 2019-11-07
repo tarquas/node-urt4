@@ -1,6 +1,6 @@
-const ClasyncEmitter = require('clasync/emitter');
+const {Emitter} = require('clasync');
 
-class Sys extends ClasyncEmitter {
+class Sys extends Emitter {
 	async data(cmd) {
 	}
 }

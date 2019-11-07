@@ -22,7 +22,7 @@ while [ true ]; do
       +set fs_basepath . \
       +set fs_libpath . \
       +set fs_homepath . \
-      +set sv_maxclients 16 \
+      +set sv_maxclients 24 \
       +set sv_hostname "^3pwnz^5.pro ^4jump" \
       +set nodeurt_modes jump \
       +set nodeurt_mode jump \

@@ -2,21 +2,22 @@ const config = require('./config');
 const net = require('net');
 const child = require('child_process');
 
-const Clasync = require('clasync');
+const {App} = require('clasync');
 const DbHub = require('./db');
+
 const Urt4 = require('./urt4');
 
 const target = process.env.NODE_TARGET;
 
-class App extends Clasync {
+class Main extends App {
   static get type() { return 'app'; }
 
-  async init(sub) {
+  async init(deps) {
     this.urt4s = {};
     this.nextUrt4Id = 0;
 
-    await sub({
-      $db: DbHub.sub(this.db)
+    await deps({
+      $db: DbHub.new(this.db)
     });
 
     this.createServer();
@@ -164,4 +165,4 @@ class App extends Clasync {
 
 ////
 
-module.exports = App;
+module.exports = Main;

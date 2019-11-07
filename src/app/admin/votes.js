@@ -1,10 +1,12 @@
 const Cmd = require('./cmd');
 
 class Votes extends Cmd {
-  async init() {
+  async init(deps) {
     this.nextId = 0;
-    await this.admin.$players;
-    await this.admin.$mod;
+
+    await deps({
+      ...this.$.pick(this.admin, '$players', '$mod')
+    });
   }
 
   async getServerTime() {
@@ -68,8 +70,9 @@ class Votes extends Cmd {
           vote.complete = true;
           vote.resolve();
         }
-      } else if (votes.voted[0] === vote) {
-        votes.voted.shift();
+      } else {
+        const idx = votes.voted.indexOf(vote); 
+        if (idx >= 0) votes.voted.splice(idx, 1);
       }
 
       await this.startVote(player);
@@ -114,15 +117,21 @@ class Votes extends Cmd {
     }
   }
 
-  voteReply(player, reply) {
+  voteReply(player, reply, vote) {
     const votes = player.$votes;
-    const vote = votes && votes.active[0];
+    if (!vote) vote = votes && votes.active[0];
     if (!vote) return null;
 
-    if (reply) vote[reply]++;
-    vote.voted++;
+    const level = this.admin.$.levelIds[player.level | 0];
 
-    votes.active.shift();
+    if (reply) {
+      const weight = this.$.weights[level];
+      vote[reply] += weight;
+      this.$players.chat(player, `^5Info ^3Your vote weight is ^2${weight}`);
+      vote.voted++;
+    }
+
+    if (vote === votes.active[0]) votes.active.shift();
     this.startVote(player);
 
     if (vote.voted >= vote.max) {
@@ -149,7 +158,10 @@ class Votes extends Cmd {
 
     if (subj.mode) {
       modeObj = $mod.modes[subj.mode];
-      if (modeObj) texts.push(`^7Change game mode to ^3${modeObj.desc}^7?`);
+
+      if (modeObj) {
+        texts.push(`^7Change game mode to ^3${modeObj.desc}^7?`);
+      }
     }
 
     if (subj.map) {
@@ -158,12 +170,20 @@ class Votes extends Cmd {
       if (subj.restart) {
         texts.push(`^7Restart map ^3${$mod.map}^7?`);
       } else {
+        const curNextMap = await this.urt4.rpc('com getcvar g_nextmap');
         let nextmap = subj.nextmap;
-        if (nextmap) texts.push(`^3Set next map to ^7${nextmap}^3?`);
+
+        if (nextmap) {
+          texts.push(`^3Set next map to ^7${nextmap}^3?`);
+          this.$players.chat(null, `^3Currently ^2next map^3 is set to ^5${curNextMap}`);
+        }
 
         if (!nextmap) {
-          nextmap = await this.urt4.rpc('com getcvar g_nextmap');
-          if (modeObj && !(nextmap in modeObj.maps)) nextmap = $mod.findNextMap($mod.map, subj.mode);
+          nextmap = curNextMap;
+
+          if (modeObj && !(nextmap in modeObj.maps)) {
+            nextmap = $mod.findNextMap($mod.map, subj.mode);
+          }
         }
 
         if (subj.cyclemap) texts.push(`^3Cycle map to ^7${nextmap}^3?`);
@@ -286,13 +306,12 @@ class Votes extends Cmd {
 
   async voteForMode(as, mode) {
     const {$players, $mod} = this.admin;
-    const modeObj = $mod.modes[mode];
     const cur = await this.urt4.rpc('com getcvar nodeurt_mode');
+
+    const modeObj = $mod.modes[mode];
     if (mode === cur) return `^1Error ^3Already playing ^2${modeObj.desc}`;
 
-    if (modeObj.restricted && as.level < this.admin.$.levels.admin) {
-      return `^1Error ^3This game mode is restricted by ^1server administrator`;
-    }
+    if (!await $mod.checkGameAccess(as, modeObj)) return this.admin.$.cmdErrors.access;
 
     const curVote = this.voteGetModeMapPreview(as);
 
@@ -391,6 +410,8 @@ class Votes extends Cmd {
       '  <game> -- exact game ID string as it appears in ^5!games^3 output.'
     ];
 
+    if (!as.auth) return `^1Error ^3Unauthorized players may not start the vote`;
+
     const {$players, $mod} = this.admin;
 
     let reply;
@@ -428,6 +449,8 @@ class Votes extends Cmd {
       return '^1Warning ^5callvote^3 is limited to support voting GUI. Please use ^5vote^3 command instead';
     }
 
+    if (!as.auth) return `^1Error ^3Unauthorized players may not start the vote`;
+
     if (cmd in $mod.$.preSetsRating) {
       const mode = await $mod.detectMode({[cmd]: arg});
       if (!mode) return '^1Error ^3This game mode is not enabled';
@@ -453,13 +476,13 @@ class Votes extends Cmd {
     return '^3This vote is disabled';
   }
 
-  async ['TMOD veto [<time>]: Disallow current voting and optionally ']({as, blames, args: [time]}) {
+  async ['TMOD veto [<time>]: Disallow current voting and optionally disable voter for given time']({as, blames, args: [time]}) {
     const votes = as.$votes;
     const vote = votes && (votes.active[0] || votes.voted[0]);
     if (!vote) return `^1Error ^3No vote in progress to cancel`;
     vote.voted = vote.max;
     vote.yes = vote.no = 0;
-    this.voteReply(as);
+    this.voteReply(as, null, vote);
 
     if (time) {
       const {$players} = this.admin;
@@ -512,5 +535,15 @@ Votes.replies = {yes: 1, no: 2};
 Votes.msecVoteFailPenalty = 20000;
 Votes.secVotePreview = 40;
 Votes.secVotePublic = 20;
+
+Votes.weights = {
+  any: 1,
+  user: 2,
+  tmod: 3,
+  mod: 3,
+  sup: 4,
+  admin: 4,
+  console: 4
+};
 
 module.exports = Votes;

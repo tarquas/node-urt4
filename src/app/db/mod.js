@@ -1,6 +1,6 @@
-const Model = require('clasync/db/mongo/model');
+const {Db} = require('clasync');
 
-class Mod extends Model {
+class Mod extends Db.Mongo.Model {
   get schema() {
     return new this.Schema({
       _id: String,
@@ -92,4 +92,5 @@ Mod.valueKeys = ['enabled', 'desc', 'rules'];
 Mod.ownKeys = ['maps'];
 Mod.objectKeys = ['pre', 'post', 'mod'];
 Mod.arrayKeys = ['mapsAdd', 'mapsDel'];
+
 module.exports = Mod;

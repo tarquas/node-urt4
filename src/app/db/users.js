@@ -1,6 +1,6 @@
-const Model = require('clasync/db/mongo/model');
+const {Db} = require('clasync');
 
-class Users extends Model {
+class Users extends Db.Mongo.Model {
   get schema() {
     return new this.Schema({
       _id: String,

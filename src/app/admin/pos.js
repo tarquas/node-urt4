@@ -1,20 +1,15 @@
 const Cmd = require('./cmd');
 
 class Pos extends Cmd {
-  async init(sub) {
+  async init(deps) {
     this.bounds = [];
 
-    /*const dep = await this.$.all({
-      ...this.$.pick(this.admin, '$players', '$mod', '$qvm'),
-      ...this.$.pick(this.urt4, 'sv')
-    });*/
-
-    await sub({
-      ...this.$.pick(this.admin, '$players', '$mod', '$qvm'),
-      ...this.$.pick(this.urt4, 'sv')
+    await deps({
+      ...this.$.pick(this.urt4, 'sv'),
+      ...this.$.pick(this.admin, '$players', '$mod', '$qvm')
     });
 
-    //dep.sv.on('ent', this.onEnt.bind(this));
+    //this.sv.on('ent', this.onEnt.bind(this));
     this.$qvm.on('begin', this.onBegin.bind(this));
     this.$mod.on('map', this.onMap.bind(this));
     this.$players.on('team', this.onTeam.bind(this));
@@ -206,6 +201,34 @@ class Pos extends Cmd {
     if (pwho !== as && as.level < this.admin.$.levels.sup) {
       return `^1Error ^3Only ^5supervisors^3 may teleport other players`;
     }
+
+    const pos = this.$.get(as, 'pos', 'save', $mod.map, l);
+    if (!pos) return `^1Error ^3Label ^5${l}^3 wasn't used as a save point on this map`;
+    $players.setPlayerState(pwho, pos);
+    await this.regainStamina(pwho);
+
+    if (pwho === as) {
+      $players.message(as, `^3loaded from ^5${l}`);
+      return;
+    }
+
+    blames.push(pwho);
+    return `^3You have teleported ^5${$players.name(pwho)}^3 to label ^5${l}`;
+  }
+
+  async [
+    'ADMIN loc [<loc ID>] [<who>] [<label>]: Loads saved position on specific location / List locations'
+  ]({as, blames, args: [loc, who, label]}) {
+    const {$players, $mod} = this.admin;
+
+    const l = label || 'default';
+    const pwho = $players.find(who, as, true);
+
+    if (pwho !== as && as.level < this.admin.$.levels.sup) {
+      return `^1Error ^3Only ^5supervisors^3 may teleport other players`;
+    }
+
+    const locs = null; //TODO:
 
     const pos = this.$.get(as, 'pos', 'save', $mod.map, l);
     if (!pos) return `^1Error ^3Label ^5${l}^3 wasn't used as a save point on this map`;

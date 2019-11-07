@@ -1,6 +1,6 @@
-const ClasyncEmitter = require('clasync/emitter');
+const {Emitter} = require('clasync');
 
-class Sv extends ClasyncEmitter {
+class Sv extends Emitter {
   async data(cmd) {
     const [, clBegin] = cmd.match(this.$.rxBegin) || [];
 

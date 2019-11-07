@@ -6,8 +6,10 @@ const readdir = util.promisify(fs.readdir);
 const readFile = util.promisify(fs.readFile);
 
 class Mod extends Cmd {
-  async init() {
-    await this.admin.$players;
+  async init(deps) {
+    await deps({
+      ...this.$.pick(this.admin, '$players')
+    });
 
     this.ignoreMapHook = true;
     this.maps = {};
@@ -149,6 +151,7 @@ class Mod extends Cmd {
     }
 
     const as = {
+      virtual: true,
       client: -2,
       level: this.admin.$.levels.console,
       allowedCmds: this.admin.modCmds
@@ -157,7 +160,7 @@ class Mod extends Cmd {
     const result = await this.admin.execCmd(as, cmd, {blames: []});
 
     if (result !== this.admin.$.cmdErrors.missing) {
-      return this.admin.$players.clCmdResult({cmd, client: -2, result});
+      return this.$players.clCmdResult({cmd, client: -2, result});
     }
 
     return false;
@@ -187,14 +190,16 @@ class Mod extends Cmd {
   async onMap({map, keepHook}) {
     if (!keepHook) this.ignoreMapHook = false;
 
-    const [gametype, mode, name] = await this.urt4.rpcs([
+    const [gametype, mode, name, locs] = await this.urt4.rpcs([
       'com getcvar g_gametype',
       'com getcvar nodeurt_mode',
-      'com getcvar sv_hostname'
+      'com getcvar sv_hostname',
+      'sv getcfgs 640 1000'
     ]);
 
     this.urt4.name = name;
     this.gametype = gametype;
+    this.locations = await this.$players.getLocationNames(locs);
 
     if (!this.map) {
       await this.modesRestrictedAdjust();
@@ -209,6 +214,7 @@ class Mod extends Cmd {
     const modeObj = this.modes[mode];
 
     if (modeObj) {
+      if (modeObj.nextmode) this.setNextMode(modeObj.nextmode);
       const posts = Object.entries(modeObj.post).map(([k, v]) => `com cvar 0 ${k} ${v}`);
       this.urt4.cmds(posts);
       this.maps = modeObj.mapObjs;
@@ -223,6 +229,8 @@ class Mod extends Cmd {
       const nextmap = this.findNextMap(map, mode);
       if (nextmap) this.setNextMap(nextmap);
     }
+
+    this.urt4.cmd(`com cvar 1 nodeurt_curmode ${mode}`);
 
     this.urt4.log(`^^ gametype ${this.gametype} map ${map} mode ${modeObj ? mode : 'unknown'}`);
     this.emit('map', {gametype: this.gametype, map: this.map});
@@ -299,7 +307,7 @@ class Mod extends Cmd {
   }
 
   setNextMap(map) {
-    const {$players} = this.admin;
+    const {$players} = this;
     this.urt4.cmd(`com cvar 1 g_nextmap ${map}`);
     $players.chat(null, `^3Next map is set to ^5${map}`);
   }
@@ -347,7 +355,7 @@ class Mod extends Cmd {
   }
 
   async changeMap(map) {
-    const {$players} = this.admin;
+    const {$players} = this;
     const mode = await this.urt4.rpc(`com getcvar nodeurt_mode`);
     const modeObj = this.modes[mode];
     const modeDesc = modeObj ? modeObj.desc : 'unknown mode';
@@ -362,6 +370,26 @@ class Mod extends Cmd {
     this.urt4.cmd('com in cyclemap');
   }
 
+  async checkGameAccess(as, modeObj) {
+    if (modeObj.restricted && as.level < this.admin.$.levels.admin) {
+      this.$players.chat(as, `^1Error ^3This game mode is restricted by ^1server administrator`);
+      return false;
+    }
+
+    const pwd = modeObj.post.g_password;
+
+    if (pwd && !as.virtual && as.info.password !== pwd) {
+      this.$players.chat(as,
+        `^1Error ^3Your password does not match with server's. ` +
+        `Please set it with ^5/password^3 command first`
+      );
+
+      return false;
+    }
+
+    return true;
+  }
+
   // CMD
 
   async ['TMOD+ cycle : Cycle map'](arg) { return await this.cycleMap(arg); }
@@ -373,7 +401,7 @@ class Mod extends Cmd {
   }
 
   async ['ANY+ game [<mode>]: Set next game mode / show current mode']({as, blames, args: [mode]}) {
-    const {$players} = this.admin;
+    const {$players} = this;
 
     if (!mode) {
       const gmode = await this.urt4.rpc('com getcvar nodeurt_mode');
@@ -386,9 +414,7 @@ class Mod extends Cmd {
     const modeObj = this.modes[mode];
     if (!modeObj) return `^1Error ^3Mode ^5${mode}^3 not found`;
 
-    if (modeObj.restricted && as.level < this.admin.$.levels.admin) {
-      return `^1Error ^3This game mode is restricted by ^1server administrator`;
-    }
+    if (!await this.checkGameAccess(as, modeObj)) return this.admin.$.cmdErrors.access;
 
     this.setNextMode(mode);
     if (!modeObj) return this.listModes(mode, as);
@@ -409,7 +435,7 @@ class Mod extends Cmd {
   async ['ANY+ setmap <name>: Set a map / show current map'](arg) { return await this.setMap(arg); }
 
   async setMap({as, blames, args: [name]}) {
-    const {$players} = this.admin;
+    const {$players} = this;
     if (!name) return `^3Current map is ^5${this.map}`;
     if (as.level < this.admin.$.levels.tmod) return this.admin.$.cmdErrors.access;
     const map = this.findMap(name);
@@ -448,7 +474,7 @@ class Mod extends Cmd {
 
   async ['TMOD+ moon <on|off>: Moon mode']({as, blames, args: [value]}) {
     if (!value) return this.admin.$.cmdErrors.help;
-    const {$players} = this.admin;
+    const {$players} = this;
     const w = this.urt4.getBoolean(value);
     this.urt4.cmd(`com cvar 1 g_gravity ${w ? 100 : 800}`);
     $players.chat(null, `^2Moon mode ^3has been set to ^5${this.urt4.showBoolean(w)}`);
@@ -459,7 +485,7 @@ class Mod extends Cmd {
   async ['ANY+ nextmap [<name>]: Set/show next map'](arg) { return await this.nextMap(arg); }
 
   async nextMap({as, blames, args: [name]}) {
-    const {$players} = this.admin;
+    const {$players} = this;
 
     if (!name) {
       const nextmap = await this.urt4.rpc(`com getcvar g_nextmap`);
@@ -475,7 +501,7 @@ class Mod extends Cmd {
 
   async ['TMOD+ rain <value>: Set 0 -- sunny; 1 -- raining; 2 -- snowing']({as, blames, args: [value]}) {
     if (!value) return this.admin.$.cmdErrors.help;
-    const {$players} = this.admin;
+    const {$players} = this;
     const w = value | 0;
     this.urt4.cmd(`com cvar 1 g_enableprecip ${w}`);
     $players.chat(null, `^2Weather ^3has been set to ^5${w < 1 ? 'sunny' : w > 1 ? 'snowing' : 'raining'}`);
@@ -486,7 +512,7 @@ class Mod extends Cmd {
   async ['TMOD+ dorestart <"map"|"half">: Restart map (default) or half'](args) { return await this.restart(args); }
 
   async restart({as, blames, args: [what]}) {
-    const {$players} = this.admin;
+    const {$players} = this;
     const w = (what || '').toString().toLowerCase();
     blames.push(null);
 
@@ -500,7 +526,7 @@ class Mod extends Cmd {
   }
 
   async ['TMOD+ shuffle : Shuffle teams']({as, blames, args}) {
-    const {$players} = this.admin;
+    const {$players} = this;
     this.urt4.cmd(`com in shuffleteams`);
     $players.chat(null, `^2Teams ^3are ^5shuffled`);
     blames.push(null);

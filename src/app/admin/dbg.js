@@ -1,11 +1,9 @@
 const Cmd = require('./cmd');
 
 class Dbg extends Cmd {
-  async init(sub) {
-    const {$players} = this.admin;
-
-    const deps = await this.$.all({
-      $players
+  async init(deps) {
+    await deps({
+      ...this.$.pick(this.admin, '$players')
     });
   }
 
@@ -21,7 +19,7 @@ class Dbg extends Cmd {
       ];
     }
 
-    const {$players} = this.admin;
+    const {$players} = this;
 
     const ents = [
       $players.findEnt(sEnt1, as),
@@ -76,6 +74,19 @@ class Dbg extends Cmd {
   async ['ADMIN+ dbgtraceent <ent1> <ent2> [<"contents+..."|all>] [<size | 10>] [<ent to trace>] [<capsule>] : Trace'](args) {
     return this.trace({...args, cte: 1});
   }
+
+  async ['ADMIN+ bring <from> <to> [<x> <y> <z>]: Trace']([from, to, x, y, z]) {
+    const {pos} = this.getState(await this.urt4.rpc(`sv getent ${from | 0 || this.getClient(from)}`));
+    const entId = to | 0;
+
+    if (entId >= 64) {
+      this.urt4.cmd(`sv ent ${entId} ${pos.join(' ')}`);
+    } else {
+      this.$players.setPlayerState({pos});
+    }
+
+    return `^2Success`;
+  }
 }
 
 Dbg.contents = {
@@ -128,3 +139,7 @@ Dbg.surfaces = {
 Dbg.surfaceNames = Dbg.invert(Dbg.surfaces);
 
 module.exports = Dbg;
+
+// cs 24 - round start svtime
+// cs 1000 - round #
+// cs 1001 - big 2 message

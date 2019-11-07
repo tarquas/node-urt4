@@ -1,12 +1,13 @@
-const Db = require('clasync/db/mongo');
+const {Db} = require('clasync');
+
 const Users = require('./users');
 const Mod = require('./mod');
 
-class DbHub extends Db {
-  async init(sub) {
-    await sub({
-      $users: Users.sub(),
-      $mod: Mod.sub()
+class DbHub extends Db.Mongo {
+  async init(deps) {
+    await deps({
+      $users: Users.new(),
+      $mod: Mod.new()
     });
 
     console.log('Connected to database');

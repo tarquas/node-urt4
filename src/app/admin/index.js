@@ -1,5 +1,6 @@
 const shq = require('shell-quote');
-const Clasync = require('clasync');
+
+const {$} = require('clasync');
 
 const Bugfixes = require('./bugfixes');
 const Dbg = require('./dbg');
@@ -13,27 +14,28 @@ const Votes = require('./votes');
 const Inv = require('./inv');
 const Info = require('./info');
 
-class Admin extends Clasync {
+class Admin extends $ {
   static get type() { return 'admin'; }
 
-  async init(sub) {
+  async init(deps) {
     this.cmds = {};
     this.modCmds = {};
     this.players = {};
+
     const cfg = {urt4: this.urt4, $db: this.urt4.$db};
 
-    await sub({
-      $bugfixes: Bugfixes.sub(cfg),
-      $dbg: Dbg.sub(cfg),
-      $menu: Menu.sub(cfg),
-      $mod: Mod.sub(cfg),
-      $players: Players.sub(cfg),
-      $pos: Pos.sub(cfg),
-      $punish: Punish.sub(cfg),
-      $qvm: Qvm.sub(cfg),
-      $votes: Votes.sub(cfg),
-      $inv: Inv.sub(cfg),
-      $info: Info.sub(cfg)
+    await deps({
+      $bugfixes: Bugfixes.new(cfg),
+      $dbg: Dbg.new(cfg),
+      $menu: Menu.new(cfg),
+      $mod: Mod.new(cfg),
+      $players: Players.new(cfg),
+      $pos: Pos.new(cfg),
+      $punish: Punish.new(cfg),
+      $qvm: Qvm.new(cfg),
+      $votes: Votes.new(cfg),
+      $inv: Inv.new(cfg),
+      $info: Info.new(cfg)
     });
   }
 
@@ -127,7 +129,7 @@ Admin.levelIds = Admin.invert(Admin.levels);
 
 Admin.levelNames = {
   any: '^3a guest',
-  user: '^5registered user',
+  user: '^5known player',
   tmod: '^4temporary moderator',
   mod: '^2a moderator',
   sup: '^1a supervisor',

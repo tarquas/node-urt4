@@ -459,6 +459,36 @@ int Api_exec_sv(long long rpcId, const char *cmd) {
 		return 1;
 	}
 
+	if (!memcmp(cmd, "getcfgs ", 8)) {
+		cmd += 8;
+		int len, cfgId, cfgFrom, cfgTo;
+		if (sscanf(cmd, "%d %d%n", &cfgFrom, &cfgTo, &len) != 2) return 0;
+		cmd += len;
+
+		char *value;
+		char msg2[1024*1024], *p = msg2;
+		int c = 1024*1024, n = 0;
+
+		snprintf(p += n, c -= n, "rpc %lld getcfgs%n", rpcId, &n);
+
+		if (!com_sv_running->integer) { Api_send(msg2); return 1; }
+
+		if (cfgFrom < 0) cfgFrom = 0;
+		if (cfgTo > CS_MAX) cfgTo = CS_MAX;
+		if (cfgFrom >= cfgTo) { Api_send(msg2); return 1; }
+
+		for (cfgId = cfgFrom; cfgId < cfgTo; cfgId++) {
+			value = sv.configstrings[cfgId];
+
+			if (value && *value) {
+				snprintf(p += n, c -= n, "\n%d %s%n", cfgId, value, &n);
+			}
+		}
+
+		Api_send(msg2);
+		return 1;
+	}
+
 	if (!memcmp(cmd, "getcfgmap", 9)) {
 		char msg2[1024];
 		snprintf(msg2, 1024, "rpc %lld %d %d %d %d %d", rpcId,

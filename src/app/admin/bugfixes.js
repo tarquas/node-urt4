@@ -1,21 +1,19 @@
-const ClasyncEmitter = require('clasync/emitter');
+const {Emitter} = require('clasync');
 
-class Bugfixes extends ClasyncEmitter {
-  async init() {
-    const dep = await this.$.all({
-      sv: this.urt4.sv,
-      $players: this.admin.$players,
-      $pos: this.admin.$pos,
-      $qvm: this.admin.$qvm
+class Bugfixes extends Emitter {
+  async init(deps) {
+    await deps({
+      ...this.$.pick(this.urt4, 'sv'),
+      ...this.$.pick(this.admin, '$players', '$pos', '$qvm')
     });
 
-    dep.$qvm.on('auth', this.onAuth.bind(this), true);
-    dep.$players.on('info2', this.onInfo2.bind(this));
-    dep.$players.on('user', this.onUser.bind(this));
-    dep.sv.on('clcmd', this.onClCmd.bind(this));
-    dep.sv.on('svcmd', this.onSvCmd.bind(this), true);
-    dep.sv.on('drop', this.onDrop.bind(this), true);
-    dep.sv.on('drop', this.onMustDrop.bind(this));
+    this.$qvm.on('auth', this.onAuth.bind(this), true);
+    this.$players.on('info2', this.onInfo2.bind(this));
+    this.$players.on('user', this.onUser.bind(this));
+    this.sv.on('clcmd', this.onClCmd.bind(this));
+    this.sv.on('svcmd', this.onSvCmd.bind(this), true);
+    this.sv.on('drop', this.onDrop.bind(this), true);
+    this.sv.on('drop', this.onMustDrop.bind(this));
 
     this.specUpdateProc = this.specUpdate.bind(this);
     this.specUpdateProc();
@@ -23,7 +21,7 @@ class Bugfixes extends ClasyncEmitter {
 
   async specUpdate() {
     try {
-      const {$players, $pos} = this.admin;
+      const {$players, $pos} = this;
       if (!$players) return;
       const clients = Object.values($players.clients);
       const specs = clients.filter(p => !p.dropped && this.$.get(p, 'info2', 't') === '3');
@@ -70,7 +68,7 @@ class Bugfixes extends ClasyncEmitter {
 
   async onAuth(args) {
     const {client, auth} = args;
-    const {$players} = this.admin;
+    const {$players} = this;
     const player = $players.clients[client];
     if (!player) return;
     const authl = this.$.get(player, 'info', 'authl') || '';
@@ -78,7 +76,7 @@ class Bugfixes extends ClasyncEmitter {
   }
 
   async onClCmd({cmd, client}) {
-    const {$players} = this.admin;
+    const {$players} = this;
     const player = $players.clients[client];
 
     // chickenfix for SR8 and FR-F1 drop bug
@@ -91,7 +89,7 @@ class Bugfixes extends ClasyncEmitter {
   }
 
   getPrettyNameInfo2Str(p, player) { // p - to whom, player - whom
-    const {$players} = this.admin;
+    const {$players} = this;
     let name = `${player.info.name}`;
 
     if (this.urt4.getBoolean(this.$.get(p, 'prefs', 'noNameColor'))) {
@@ -122,7 +120,7 @@ class Bugfixes extends ClasyncEmitter {
   }
 
   async onInfo2({client}) {
-    const {$players} = this.admin;
+    const {$players} = this;
     while (!$players.cfgMap) await this.$.delay(100);
     const player = $players.clients[client];
     if (!player) return 0;
@@ -150,7 +148,7 @@ class Bugfixes extends ClasyncEmitter {
 
   async onUser({player}) {
     //if (this.urt4.getBoolean(this.$.get(player, 'prefs', 'noNameColor'))) return 0;
-    const {$players} = this.admin;
+    const {$players} = this;
     const players = Object.values($players.clients).filter(p => !p.dropped);
 
     const cmds = (
@@ -185,7 +183,7 @@ class Bugfixes extends ClasyncEmitter {
       return true;
     }
 
-    const {$players, $} = this.admin;
+    const {$players, $} = this;
     const player = $players.clients[client];
     if (!player) return false;
 
@@ -248,7 +246,7 @@ class Bugfixes extends ClasyncEmitter {
   }
 
   async onDrop({client, reason, message, by}) {
-    const {$players, $qvm} = this.admin;
+    const {$players, $qvm} = this;
     const player = $players.clients[client];
 
     // allow auth login in local intranet

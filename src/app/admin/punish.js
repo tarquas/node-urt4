@@ -1,13 +1,14 @@
 const Cmd = require('./cmd');
 
 class Punish extends Cmd {
-  async init(sub) {
-    await sub({
+  async init(deps) {
+    await deps({
       ...this.$.pick(this.admin, '$players', '$votes')
     });
 
     this.$players.on('user', this.onUser.bind(this));
     this.$players.on('info', this.onInfo.bind(this));
+    this.urt4.sv.on('clcmd', this.onClCmd.bind(this));
   }
 
   async onUser({client}) {
@@ -26,7 +27,49 @@ class Punish extends Cmd {
     const player = this.$players.clients[client];
     if (!player) return;
     const name = this.$.get(player, 'punish', 'name');
-    if (name) this.urt4.cmd(`sv clvar ${player.client} name ${name}`);
+
+    if (name && name !== this.$.get(player, 'info', 'name')) {
+      // TODO: makeup on stage -1
+      this.urt4.cmd(`sv clvar ${player.client} name ${name}`);
+    }
+  }
+
+  async spamMute(p) {
+    const now = +new Date();
+    const msec = this.$.msecSpamMute;
+
+    const mute = {
+      since: now,
+      until: now + msec,
+      by: 'spamBuster', byAuth: ''
+    };
+
+    await this.$players.set(p, {'punish.mute': mute});
+
+    this.urt4.cmd(`com in mute ${p.client} ${parseInt(msec / 1000)}`);
+
+    this.$players.chat(null, `${this.$players.name(p)} ^3has been muted for ^5${
+      this.urt4.showTimeSpan(msec)
+    } ^3for ^2spamming`);
+  }
+
+  async onClCmd({client, cmd}) {
+    const player = this.$players.clients[client];
+    if (!player || player.dropped) return 1;
+    if (!this.$.rxSpamMuteCmd.test(cmd)) return;
+
+    const spamScore = 0 | this.$.get(player, 'punish', 'spam', 'score');
+    const spamLast = this.$.get(player, 'punish', 'spam', 'last');
+    const now = +new Date();
+
+    if (spamLast && now - spamLast < this.$.msecSpamMuteGap) {
+      if (spamScore === this.$.nSpamMuteScore) await this.spamMute(player);
+      this.$.set(player, 'punish', 'spam', 'score', spamScore + 1);
+    } else if (spamScore) {
+      this.$.set(player, 'punish', 'spam', 'score', 0);
+    }
+
+    this.$.set(player, 'punish', 'spam', 'last', now);
   }
 
   // CMD
@@ -109,7 +152,11 @@ class Punish extends Cmd {
     }
 
     blames.push(null);
-    if (!p.dropped) this.$players.kick(p, this.$players.banReason(ban));
+
+    if (!p.dropped) {
+      p.banned = ban;
+      this.$players.kick(p, this.$players.banReason(ban));
+    }
   }
 
   async ['MOD+ unban <player>: Unbans a player']({as, blames, args: [player]}) {
@@ -144,6 +191,57 @@ class Punish extends Cmd {
     blames.push(null);
   }
 
+  async ['SUP cheat <on|off>: Cheat mode (use to enable </r_shownormals 1> etc.)']({as, blames, args: [par]}) {
+    const sysCfg = await this.urt4.rpc('sv getcfg 1');
+    const value = this.urt4.getBoolean(par);
+    const cheatCfg = sysCfg.replace(/\\sv_cheats\\\d/, `\\sv_cheats\\${value}`);
+    const cmds = this.urt4.clientCfg(as.client, 1, cheatCfg);
+    this.urt4.cmds(cmds);
+    return `^3Your cheat mode changed to ${value ? '^2ON' : '^1OFF'}`;
+  }
+
+  async ['MOD+ banlist [<before>]: List last bans (or before some date YYYY-MM-DD)']({as, blames, args: [before]}) {
+    const ban = 'settings.punish.ban';
+    const since = `${ban}.since`;
+    const query = {};
+    const limit = 10;
+
+    if (before) {
+      const date = +new Date(before);
+      if (isNaN(date)) return '^1Error ^5before ^3must be a date';
+      query[since] = {$lte: date};
+    }
+
+    const list = await this.$db.$users.model.find(
+      query,
+      {auth: 1, name: 1, [ban]: 1, lastIp: 1, 'settings.authInfo': 1}
+    ).sort({[since]: -1}).limit(limit).lean().exec();
+
+    if (!list.length) return '^2No bans found';
+
+    const result = [before ? `^2${limit} bans before ${before}:` : `Last ${limit} bans`];
+
+    for (const item of list) {
+      const name = item.name[item.name.length - 1];
+
+      const id = (
+        this.$.get(item, 'settings', 'authInfo', 'addon') ||
+        item.auth[0] ||
+        item.lastIp
+      );
+
+      const {byAuth, since, permanent, until, reason} = this.$.get(item, 'settings', 'punish', 'ban') || {};
+      const dateStr = new Date(since).toISOString();
+      const datePr = `${dateStr.substr(0, 10)} ${dateStr.substr(11, 5)}`;
+      const now = +new Date();
+      const period = permanent ? '^1permanent' : until <= now ? '^2finished' : `^3for ${this.urt4.showTimeSpan(until - since)}`;
+      result.push(`^2@${datePr} ^3by ^5${byAuth} ${period} ^7: ${name} ^5[${id}^5]`);
+      result.push(`  ^2\\ Reason: ^7${reason}`);
+    }
+
+    return result;
+  }
+
   async ['TMOD+ mute <player> [<time>|unmute]: Mutes/unmutes the player']({as, blames, args: [player, time]}) {
     const p = this.$players.find(player, as, true);
     if (p.level >= as.level) blames.push(p);
@@ -175,7 +273,7 @@ class Punish extends Cmd {
     blames.push(null);
   }
 
-  async ['SUP+ setname <player> [<...name>] : Force player name (use \'\' to remove lock) / check it']({as, blames, args: [player, ...names]}) {
+  async ['SUP+ setname <player> [<...name>] : Force player name (use \'+\' to remove lock) / check it']({as, blames, args: [player, ...names]}) {
     if (!player) return this.admin.$.cmdErrors.help;
     const p = this.$players.find(player, as);
 
@@ -187,7 +285,8 @@ class Punish extends Cmd {
       }`;
     }
 
-    const name = names.join(' ');
+    let name = names.join(' ');
+    if (name === '+') name = '';
     await this.$players.set(p, {'punish.name': name});
     if (name) this.urt4.cmd(`sv clvar ${p.client} name ${name}`);
 
@@ -203,11 +302,51 @@ class Punish extends Cmd {
     return `^3You have just slapped ${this.$players.name(p)}`;
   }
 
-  async ['MOD+ toss <player> [<reason>]: Toss a player']({as, blames, args: [player, reason]}) {
+  async ['ANY slot <player>: Take slot of unauthorized player']({as, blames, args: [player]}) {
+    if (!player) return this.admin.$.cmdErrors.help;
+    if (!as.auth) return `^1Error ^3You have no auth`;
+
+    const p = this.$players.find(player, as);
+    blames.push(null);
+
+    const team = this.$.get(p, 'info2', 't');
+
+    if (!(team in this.$players.$.playingTeam)) {
+      return `^1Error ^3Player ${this.$players.name(p)} is not playing`;
+    }
+
+    if (p.auth) return `^1Error ^3Player ${this.$players.name(p)} is authorized: ^2${p.auth}`;
+
+    await this.$players.forceTeam(p, this.$players.$.teamNames[this.$.get(as, 'info2', 't')]);
+    await this.$players.forceTeam(as, this.$players.$.teamNames[team]);
+
+    this.$players.chat(null, `^3Slot of ${this.$players.name(p)} has been taken by ^2${this.$players.name(as)}`);
+    return `^3You took slot of ${this.$players.name(p)}`;
+  }
+
+  async ['MOD+ toss <player> [<times>]: Toss a player']({as, blames, args: [player, times]}) {
     const p = this.$players.find(player, as, true);
     blames.push(null);
-    this.urt4.cmd(`sv ps ${p.client} velo 0 0 10000`);
+    this.urt4.cmd(`com in nuke ${p.client}`);
+    const t = times | 0 || 1;
+
+    for (let i = 0; i < t; i++) {
+      this.urt4.cmd(`sv ps ${p.client} velo 0 0 10000`);
+      await this.$.delay(100);
+    }
+
+    //this.urt4.cmd(`sv clcmd ${p.client} 1 kill`);
+
+    //this.urt4.cmd(`sv ps ${p.client} velo 0 0 -3000`);
+
     return `^3You have just tossed ${this.$players.name(p)}`;
+  }
+
+  async ['MOD+ nuke <player>: Nuke a player']({as, blames, args: [player, reason]}) {
+    const p = this.$players.find(player, as, true);
+    blames.push(null);
+    this.urt4.cmd(`com in nuke ${p.client}`);
+    return `^3You have just nuked ${this.$players.name(p)}`;
   }
 
   async ['TMOD+ kick <player> [<reason>]: Kicks a player']({as, blames, args: [player, ...reasons]}) {
@@ -257,5 +396,10 @@ Punish.levelMsecLimits = {
   admin: 5000 * 7 * 24 * 60 * 60 * 1000,
   console: 5000 * 7 * 24 * 60 * 60 * 1000
 };
+
+Punish.nSpamMuteScore = 2;
+Punish.msecSpamMute = 30000;
+Punish.msecSpamMuteGap = 2000;
+Punish.rxSpamMuteCmd = /^ut_radio\s/;
 
 module.exports = Punish;

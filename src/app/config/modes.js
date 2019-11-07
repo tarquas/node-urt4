@@ -33,7 +33,8 @@ module.exports = {
       sameResp: 0,
       infSta: 0,
       saveLoadBind: 0,
-      posCmds: 0
+      posCmds: 0,
+      emitLoc: 0
     },
 
     mapSrc: [
@@ -137,7 +138,8 @@ module.exports = {
       enabled: true,
       desc: 'public Bomb custom maps',
       maps: funMaps,
-      inherits: ['bomb', 'fun']
+      inherits: ['bomb', 'fun'],
+      nextmode: 'bomb'
     },
 
     'bomb.old': {
@@ -192,7 +194,8 @@ module.exports = {
       enabled: true,
       desc: 'public Capture The Flag custom maps',
       maps: funMaps,
-      inherits: ['ctf', 'fun']
+      inherits: ['ctf', 'fun'],
+      nextmode: 'ctf'
     },
 
     'ctf.old': {
@@ -258,7 +261,8 @@ module.exports = {
         sameResp: 1,
         infSta: 1,
         saveLoadBind: 1,
-        posCmds: 1
+        posCmds: 1,
+        emitLoc: 1
       },
 
       rules: rules.jump,
@@ -302,7 +306,8 @@ module.exports = {
       enabled: true,
       desc: 'public Team Survivor custom maps',
       maps: funMaps,
-      inherits: ['ts', 'fun']
+      inherits: ['ts', 'fun'],
+      nextmode: 'ts'
     },
 
     'ts.old': {

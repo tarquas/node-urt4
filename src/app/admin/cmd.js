@@ -1,6 +1,6 @@
-const ClasyncEmitter = require('clasync/emitter');
+const {Emitter} = require('clasync');
 
-class Cmd extends ClasyncEmitter {
+class Cmd extends Emitter {
 	async init() {
 		const hub = Object.getPrototypeOf(this);
 

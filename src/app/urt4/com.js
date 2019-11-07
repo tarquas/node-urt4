@@ -1,6 +1,6 @@
-const ClasyncEmitter = require('clasync/emitter');
+const {Emitter} = require('clasync');
 
-class Com extends ClasyncEmitter {
+class Com extends Emitter {
 	async data(cmd) {
 		const [, cvarName, cvarValue] = cmd.match(/^com cvar (\S+) ([\S\s]*)$/) || [];
 

@@ -1,20 +1,18 @@
 const Cmd = require('./cmd');
 
 class Inv extends Cmd {
-  async init(sub) {
-    const dep = await this.$.all({      
-      $qvm: this.admin.$qvm,
-      $mod: this.admin.$mod,
-      $players: this.admin.$players,
-      sv: this.urt4.sv
+  async init(deps) {
+    await deps({      
+      ...this.$.pick(this.urt4, 'sv'),
+      ...this.$.pick(this.admin, '$qvm', '$mod', '$players')
     });
 
     const onGear = this.onGear.bind(this);
 
-    dep.sv.on('clcmd', this.onPreDrop.bind(this), true);
-    dep.$qvm.on('info', onGear);
-    dep.$qvm.on('item', onGear);
-    dep.$qvm.on('spawn', onGear);
+    this.sv.on('clcmd', this.onPreDrop.bind(this), true);
+    this.$qvm.on('info', onGear);
+    this.$qvm.on('item', onGear);
+    this.$qvm.on('spawn', onGear);
   }
 
   getSfx(s) {
@@ -129,7 +127,7 @@ class Inv extends Cmd {
   }
 
   async checkInv({client, invForce}) {
-    const {$players, $mod} = this.admin;
+    const {$players, $mod} = this;
     const player = $players.clients[client];
     const fields = invForce || this.$.force;
 
@@ -161,7 +159,7 @@ class Inv extends Cmd {
   }
 
   async onGear(args) {
-    const {$players} = this.admin;
+    const {$players} = this;
     const player = $players.clients[args.client];
     if (!player) return false;
 
@@ -235,7 +233,7 @@ class Inv extends Cmd {
   async ['MOD+ disallow <items...>: List of weapons/items that are disallowed'](
     {as, blames, args: [...weapons]}
   ) {
-    const {$players} = this.admin;
+    const {$players} = this;
     const w = weapons.join(' ');
 
     if (!w) {
@@ -258,8 +256,8 @@ class Inv extends Cmd {
     blames.push(null);
   }
 
-  async ['SUP+ weapons <player|"$all"> <weapon+bullets*clips@mode ...>: Force player weapons. F.x. hk69+3*5@1 -- give HK69 with 3 nades and 5 reloadable clips mode 1 (long range)']({as, blames, args: [player, ...values]}) {
-    const {$players, $mod} = this.admin;
+  async ['MOD+ weapons <player|"$all"> <weapon+bullets*clips@mode ...> [<reason>]: Force player weapons. F.x. hk69+3*5@1 -- give HK69 with 3 nades and 5 reloadable clips mode 1 (long range)']({as, blames, args: [player, ...values]}) {
+    const {$players, $mod} = this;
 
     if (!player) {
       return [
@@ -306,7 +304,7 @@ class Inv extends Cmd {
 
 
   async ['SUP+ items <player|"$all"> <items ...>: Force player items']({as, blames, args: [player, ...values]}) {
-    const {$players, $mod} = this.admin;
+    const {$players, $mod} = this;
 
     if (!player) {
       return [

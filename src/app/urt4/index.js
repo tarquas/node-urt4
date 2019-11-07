@@ -1,19 +1,20 @@
-const Clasync = require('clasync');
+const {$} = require('clasync');
+
 const Com = require('./com');
 const Sv = require('./sv');
 const Sys = require('./sys');
 const Admin = require('../admin');
 
-class Urt4 extends Clasync {
+class Urt4 extends $ {
   static get type() { return 'urt4'; };
 
-  async init(sub) {
+  async init(deps) {
     this.app.urt4s[this.id] = this;
 
-    await sub({
-      com: Com.sub(),
-      sv: Sv.sub(),
-      sys: Sys.sub()
+    await deps({
+      com: Com.new(),
+      sv: Sv.new(),
+      sys: Sys.new()
     });
 
     this.port = 0;
@@ -31,8 +32,8 @@ class Urt4 extends Clasync {
 
     this.cmd('api id');
 
-    await sub({
-      admin: Admin.sub()
+    await deps({
+      admin: Admin.new()
     });
   }
 
@@ -155,6 +156,17 @@ class Urt4 extends Clasync {
 
   cmds(lines) {
     this.socket.write(lines.map(line => `${line}\0`).join(''));
+  }
+
+  clientCfg(client, cfgId, value) {
+    if (value.length <= this.$.cfgMaxLength) return [`sv svcmd ${client} cs ${cfgId} "${value}"`];
+
+    const parts = value.match(this.$.cfgMaxLengthRx);
+    const result = [`sv svcmd ${client} bcs0 ${cfgId} "${parts[0]}"`];
+    const l = parts.length - 1;
+    for (let idx = 1; idx < l; idx++) result.push(`sv svcmd ${client} bcs1 ${cfgId} "${parts[idx]}"`);
+    result.push(`sv svcmd ${client} bcs2 ${cfgId} "${parts[l]}"`);
+    return result;
   }
 
   async rpc(cmd) {
@@ -321,6 +333,9 @@ class Urt4 extends Clasync {
     delete this.app.urt4s[this.id];
   }
 }
+
+Urt4.cfgMaxLength = 900;
+Urt4.cfgMaxLengthRx = new RegExp(`.{1,${Urt4.cfgMaxLength}}`, 'g');
 
 Urt4.rxColor1 = /\^(.)/;
 Urt4.rxColor = /\^(.)/g;

@@ -17,6 +17,7 @@ extern "C" {
 	int Api_exec_sv(long long rpcId, const char *cmd);
 	void urt4_doClientCommand(int slot, const char* msg, int ok);
 	void urt4_doUserinfoChange(int slot, const char* info);
+	// state
 	void apiSetPlayerState(int slot, const char *state);
 	void apiGetPlayerState(const char *pfx, int client);
 	int hkCmpPlayerState(void *ps1, void *ps2);
@@ -24,6 +25,8 @@ extern "C" {
 	void apiGetEntityState(const char *pfx, int num);
 	int hkCmpEntityState(void *es1, void *es2);
 	void apiFindEntities(const char *pfx, int from, const char *state, void *p1, void *p2);
+	// follow
+	#include "sv_follow.h"
 
 // ***** sys
 

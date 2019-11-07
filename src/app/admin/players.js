@@ -1,25 +1,28 @@
-const config = require('../config');
 const Cmd = require('./cmd');
+
+const config = require('../config');
 const web = require('axios');
 
 class Players extends Cmd {
-  async init() {
+  async init(deps) {
     this.clients = {};
+    this.ents = {};
     this.geoip = {};
 
-    await this.$db;
-    const $qvm = await this.admin.$qvm;
-    const sv = await this.urt4.sv;
+    await deps({
+      ...this.$.pick(this.urt4, 'sv'),
+      ...this.$.pick(this.admin, '$qvm')
+    });
 
-    $qvm.on('auth', this.onAuth.bind(this));
-    $qvm.on('begin', this.onBegin.bind(this));
-    $qvm.on('info', this.onInfo.bind(this));
-    $qvm.on('info2', this.onInfo2.bind(this));
-    sv.on('clcmd', this.onClCmd.bind(this), 1);
-    sv.on('svcmd', this.onSvCmd.bind(this));
-    sv.on('drop', this.onDrop.bind(this));
-    sv.on('ent', this.onEnt.bind(this));
-    sv.on('map', this.onMap.bind(this));
+    this.$qvm.on('auth', this.onAuth.bind(this));
+    this.$qvm.on('begin', this.onBegin.bind(this));
+    this.$qvm.on('info', this.onInfo.bind(this));
+    this.$qvm.on('info2', this.onInfo2.bind(this));
+    this.sv.on('clcmd', this.onClCmd.bind(this), 1);
+    this.sv.on('svcmd', this.onSvCmd.bind(this));
+    this.sv.on('drop', this.onDrop.bind(this));
+    this.sv.on('ent', this.onEnt.bind(this));
+    this.sv.on('map', this.onMap.bind(this));
 
     this.startup();
   }
@@ -381,6 +384,10 @@ class Players extends Cmd {
     return this.chat(clients, msg, 'cp');
   }
 
+  big2(clients, msg) {
+    return this.chat(clients, msg, 'cs 1001');
+  }
+
   findAll(filter, all) {
     const f = this.admin.norm(filter);
     const result = [];
@@ -542,10 +549,39 @@ class Players extends Cmd {
     const player = this.clients[client];
     if (!player || player.dropped) return;
     if (this.urt4.act) this.urt4.log(`${this.ncname(player)} < ${cmd}`);
+    const [, loc] = cmd.match(this.$.rxLocation) || [];
+    if (loc) player.location = +loc;
+  }
+
+  async getLocationNames(locs) {
+    const res = locs || (await this.urt4.rpc('sv getcfgs 640 1000'));
+    const arr = res.split('\n');
+
+    const locNames = this.$.makeObject(arr.map((line) => {
+      const [, id, name] = line.match(this.$.rxCfgsItem) || [];
+      if (!id) return null;
+      const obj = {[id - 640]: name};
+      return obj;
+    }));
+
+    return locNames;
+  }
+
+  async getLocationName(id) {
+    if (!id || id < 0 || id >= 360) return null;
+    const locName = await this.urt4.rpc(`sv getcfg ${+id + 640}`);
+    return locName;
   }
 
   async onEnt({id, state}) {
-    //console.log(`${id} ${state}`);
+    /*const st = this.getState(state);
+
+    if (!this.ents[id] || st.type.join() !== this.ents[id].type.join()) {
+      console.log(id, state);
+    }
+
+    this.ents[id] = st;*/
+
     //if (/type 3 0/.test(state)) this.urt4.socket.write(`sv ent ${id} type 4 0 model 1 solid -1 mins -150 -150 -150 maxs 150 150 150\0`);
   }
 
@@ -668,7 +704,7 @@ class Players extends Cmd {
     const p = this.find(player, as);
     const arg = text.join(' ');
     this.chat(p.client, arg);
-    blames.push(p);
+    blames.push(null);
     return [`^2Chat message has been sent`];
   }
 
@@ -677,6 +713,7 @@ class Players extends Cmd {
   ) {
     const arg = text.join(' ');
     this.big(null, arg);
+    this.message(null, `^6ALL:^7 ${arg}`);
     blames.push(null);
     return [`^2Big message has been sent`];
   }
@@ -748,6 +785,7 @@ class Players extends Cmd {
   async ['ANY+ listdc [<filter>]: List recently disconnected players']({as, args}) { return this.list({as, args, dropped: true}); }
 
   async list({as, args, dropped}) {
+    const {$mod} = await this.admin;
     const arg = args.join(' ');
     const filter = this.admin.norm(arg);
     const found = this.findAll(filter, as.level >= this.admin.$.levels.mod);
@@ -755,6 +793,9 @@ class Players extends Cmd {
     this.chat(as.client, filter ? `^2Players matching "^5${arg}^2"` : `^2All players:`);
 
     found.sort(this.sortByClient);
+
+    const mode = await this.urt4.rpc(`com getcvar nodeurt_mode`);
+    const modeObj = $mod.modes[mode];
 
     for (const player of found) {
       if (dropped != null && (!dropped ^ !player.dropped)) continue;
@@ -778,6 +819,10 @@ class Players extends Cmd {
         if (d.reason) text.push(`^7: ^5${d.reason}`);
         if (d.message) text.push(`^7: ^3${d.message}`);
         this.chat(as.client, text.join(''));
+        if (player.banned) this.chat(as.client, `   ** ^3Banned by ^5${player.banned.byAuth}`);
+      } else if (as.level >= this.admin.$.levels.sup || modeObj.mod.emitLoc) {
+        const locName = $mod.locations[player.location];
+        if (locName) this.chat(as.client, `   \\ ^5On map:^3 ${locName}`);
       }
     }
   }
@@ -832,21 +877,24 @@ class Players extends Cmd {
 
     const pref = this.$.prefs[setup];
 
-    if (pref) {
-      const value = !values ? '' : values.join(' ');
-      const norm = this.urt4.getValueByType(value, pref.type);
-      await this.set(as, {[`prefs.${setup}`]: norm});
+    if (!pref) return `^1Error ^3Preference or setup ^5${setup}^3 is unknown`;
 
-      return [
-        `^3Your preference ^5${setup}^3 has been set to ^2${this.urt4.showValueByType(norm, pref.type)}`,
-        '^5Note ^3Some settings may require reconnect to take effect'
-      ];
-    }
+    if (!values.length) return [
+      '^2Your preference setting:',
+      ` ^5${setup}: ^2${this.urt4.showValueByType(this.$.get(as, 'prefs', setup), pref.type)} -- ^3${pref.desc} (^2${this.urt4.typeName(pref.type)}^3)`
+    ];
 
-    return `^1Error ^3Preference or setup ^5${setup}^3 is unknown`;
+    const value = values.join(' ');
+    const norm = this.urt4.getValueByType(value, pref.type);
+    await this.set(as, {[`prefs.${setup}`]: norm});
+
+    return [
+      `^3Your preference ^5${setup}^3 has been set to ^2${this.urt4.showValueByType(norm, pref.type)}`,
+      '^5Note ^3Some settings may require reconnect to take effect'
+    ];
   }
 
-  async ['ANY+ swap <player1> [<player2>]: Exchange players in different teams. Exchange yourself with player in different team']({as, blames, args: [player1, player2]}) {
+  async ['MOD+ swap <player1> [<player2>]: Exchange players in different teams. Exchange yourself with player in different team']({as, blames, args: [player1, player2]}) {
     if (!player1) return this.admin.$.cmdErrors.help;
     const p1 = this.find(player1, as);
     const p2 = this.find(player2, as, true);
@@ -925,6 +973,7 @@ class Players extends Cmd {
   }
 }
 
+Players.rxCfgsItem = /^(\d+) (.*)$/;
 Players.rxCustomCmd = /^\w+/;
 Players.rxIp = /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}/;
 Players.rxIpLocal = /^127\.|^10\.|^192\.168\.|^172\.(1[6-9]|2|3[01])\./;
@@ -936,12 +985,18 @@ Players.rxSayCmd = /^(say|sayteam)\s+("?)[!@&\/\\.]([\S\s]+?)$/;
 Players.rxSayTellCmd = /^tell\s+\S+\s+[!@&\/\\.]([\S\s]+?)$/;
 Players.rxUnwrapInfo = /\\[^\\]+\\[^\\]*/g;
 Players.rxUnwrapInfoPairs = /^\\([^\\]+)\\([^\\]*)$/;
-Players.teams = {f: 0, r: 1, b: 2, s: 3};
-Players.teamIds = Players.invert(Players.teams);
+//Players.teams = {f: 0, r: 1, b: 2, s: 3};
+//Players.teamIds = Players.invert(Players.teams);
 Players.rxRawPlayers = /^(\d+):(.*) TEAM:(\w+) KILLS:(\d+) DEATHS:(\d+) ASSISTS:(\d+) PING:(\d+) AUTH:(\w+|---) IP:([\d\.:]+)$/;
+
 Players.rxRawPlayersAuth = /^(\d+):.* TEAM:\w+ KILLS:\d+ DEATHS:\d+ ASSISTS:\d+ PING:(\d+) AUTH:(\w+|---) IP:([\d\.:]+)$/;
+
 Players.rxWhiteSpace = /(?=\s)/;
 Players.rxWhite = /\^7/g;
+Players.rxLocation = /^location (\d+)\n$/;
+
+Players.rxRawPlayersStats = /^(\d+):.* TEAM:\w+ KILLS:(\d+) DEATHS:(\d+) ASSISTS:(\d+) PING:\d+ AUTH:(?=\w+|---) IP:[\d\.:]+(?=\n(.*))?$/;
+//Players.rxStats = ;
 
 Players.teams = {
   free: 0,
@@ -962,6 +1017,12 @@ Players.teamDesc = {
 Players.teamDenyManual = {
   red: 1,
   blue: 2
+};
+
+Players.playingTeam = {
+  0: true,
+  1: true,
+  2: true
 };
 
 Players.prefs = {

@@ -1,8 +1,12 @@
-const ClasyncEmitter = require('clasync/emitter');
+const {Emitter} = require('clasync');
 
-class Qvm extends ClasyncEmitter {
-  async init() {
-    this.urt4.com.on('out', this.onOut.bind(this));
+class Qvm extends Emitter {
+  async init(deps) {
+    await deps({
+      ...this.$.pick(this.urt4, 'com'),
+    });
+
+    this.com.on('out', this.onOut.bind(this));
   }
 
   async onOut({text}) {
