@@ -548,6 +548,11 @@ class Players extends Cmd {
   async onSvCmd({cmd, client}) {
     const player = this.clients[client];
     if (!player || player.dropped) return;
+
+    if (player.auth && cmd === 'print "g_maxGameClients has been reached, you cannot join"') {
+      this.chat(player, '^2Tip:^3 You may take slot of any unauthed player by using ^5!slot^3 command.');
+    }
+
     if (this.urt4.act) this.urt4.log(`${this.ncname(player)} < ${cmd}`);
     const [, loc] = cmd.match(this.$.rxLocation) || [];
     if (loc) player.location = +loc;

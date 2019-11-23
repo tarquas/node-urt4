@@ -20,7 +20,7 @@ class Info extends Cmd {
       '^2Tip:^3 Write ^5!help^3 to list available commands',
       '^2Tip:^3 Use ^5!prefs^3 to view/adjust your preferences',
       '^2Tip:^3 Please read and respect our ^5!rules',
-      '^2Tip:^3 Join our TeamSpeak 3: ^5pwnz.pro'
+      '^2Tip:^3 Join our Discord. Please visit: http://^5pwnz.pro^3/'
     ]);
 
     this.$.set(player, '$info', 'tipsShown', true);

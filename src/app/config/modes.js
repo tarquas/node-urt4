@@ -237,7 +237,8 @@ module.exports = {
       enabled: true,
       desc: 'public Freeze Tag game',
       inherits: ['ts'],
-      pre: {g_gametype: 10}
+      pre: {g_gametype: 10},
+      post: {g_inactivity: 180}
     },
 
     jump: {

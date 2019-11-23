@@ -23,7 +23,7 @@
   "license": "MIT",
   "dependencies": {
     "axios": "^0.18.1",
-    "clasync": "^0.7.5",
+    "clasync": "^0.7.6",
     "discord.js": "^11.5.1",
     "shell-quote": "^1.7.2"
   }

@@ -306,6 +306,10 @@ class Punish extends Cmd {
     if (!player) return this.admin.$.cmdErrors.help;
     if (!as.auth) return `^1Error ^3You have no auth`;
 
+    if (this.$.get(as, 'sets', 'player', 'teamDenyAll')) {
+      return `^1Error ^3You are not allowed to ^2choose a team^3`;
+    }
+
     const p = this.$players.find(player, as);
     blames.push(null);
 

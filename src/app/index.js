@@ -2,7 +2,7 @@ const config = require('./config');
 const net = require('net');
 const child = require('child_process');
 
-const {App} = require('clasync');
+const {App, Thread} = require('clasync');
 const DbHub = require('./db');
 
 const Urt4 = require('./urt4');
@@ -17,7 +17,8 @@ class Main extends App {
     this.nextUrt4Id = 0;
 
     await deps({
-      $db: DbHub.new(this.db)
+      $db: DbHub.new(this.db),
+      //$landing: Thread.Pool.new({filename: `${__dirname}/app/web/landing/thread.js`, min: 1, max: 1})
     });
 
     this.createServer();
