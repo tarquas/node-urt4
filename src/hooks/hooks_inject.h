@@ -11,6 +11,11 @@ extern "C" {
 
 // ***** sv
 
+  #ifdef FILE_sv_game
+		#include <qcommon/q_shared.h>
+    Urt4_Hook(intptr_t, SV_GameSystemCalls, (intptr_t *args));
+  #endif
+
 	#ifdef FILE_sv_client
 		struct client_s;
 		struct usercmd_s;

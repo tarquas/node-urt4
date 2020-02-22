@@ -3,6 +3,7 @@ const {$} = require('clasync');
 const Com = require('./com');
 const Sv = require('./sv');
 const Sys = require('./sys');
+const Info = require('./info');
 const Admin = require('../admin');
 
 class Urt4 extends $ {
@@ -33,7 +34,8 @@ class Urt4 extends $ {
     this.cmd('api id');
 
     await deps({
-      admin: Admin.new()
+      admin: Admin.new(),
+      $info: Info.new()
     });
   }
 
@@ -177,7 +179,12 @@ class Urt4 extends $ {
     });
 
     this.socket.write(`rpc ${rpcId} ${cmd}\0`);
-    const result = await this.$.race([promise, this.$.timeout(5000)]);
+
+    const result = await this.$.race([
+      promise,
+      this.$.timeout(5000, new Error(`timeout @ ${cmd}`))
+    ]);
+
     delete this.rpcById[rpcId];
     return result;
   }
@@ -193,7 +200,12 @@ class Urt4 extends $ {
 
     const msg = rpcObjs.map(obj => `rpc ${obj.rpcId} ${obj.cmd}\0`).join('');
     this.socket.write(msg);
-    const result = await this.$.race([this.$.all(promises), this.$.timeout(5000)]);
+
+    const result = await this.$.race([
+      this.$.all(promises),
+      this.$.timeout(5000, new Error(`timeout @ ${cmds.join('; ')}`))
+    ]);
+
     rpcObjs.forEach(obj => delete this.rpcById[obj.rpcId]);
     return result;
   }
@@ -217,6 +229,7 @@ class Urt4 extends $ {
   }
 
   async data(message) {
+    if (this[this.$.instance].final) return;
     const socket = this.socket;
     if (!message.length) return;
     this.msgBuf.push(message);
@@ -315,6 +328,14 @@ class Urt4 extends $ {
         return this.log(`~act: changed to ${this.showBoolean(this.act)}`);
       }
 
+      const [, cfgOn] = cmd.match(/^~cfg\s(\S*)/) || [];
+
+      if (cfgOn != null) {
+        if (!cfgOn) return this.log(`~cfg: is ${this.showBoolean(this.cfgOn)}`);
+        this.cfgOn = this.getBoolean(cfgOn);
+        return this.log(`~cfg: changed to ${this.showBoolean(this.cfgOn)}`);
+      }
+
       const [, rawCmd] = cmd.match(/^~raw\s(.*)/) || [];
       if (rawCmd != null) return this.cmd(rawCmd);
 
@@ -325,7 +346,8 @@ class Urt4 extends $ {
       if (rawNCmd != null) return this.cmd(rawNCmd);
     }
 
-    if (await this.com.emit('in', {cmd})) return;
+    const cmdIn = await this.com.emit('in', {cmd});
+    if (cmdIn) return;
     return this.cmd(`rpc 0 com rpc ${cmd}`);
   }
 

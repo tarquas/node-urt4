@@ -8,7 +8,8 @@ const readFile = util.promisify(fs.readFile);
 class Mod extends Cmd {
   async init(deps) {
     await deps({
-      ...this.$.pick(this.admin, '$players')
+      ...this.$.pick(this.admin, '$players', '$qvm'),
+      ...this.$.pick(this.urt4, 'sv', 'com')
     });
 
     this.ignoreMapHook = true;
@@ -16,68 +17,42 @@ class Mod extends Cmd {
     this.modes = {};
     this.sets = {};
 
-    this.urt4.com.on('fs_restart', this.onMaps.bind(this));
-    this.urt4.sv.on('cfg', this.onCfg.bind(this));
-    this.urt4.sv.on('map', this.onMap.bind(this));
-    this.urt4.com.on('in', this.onIn.bind(this));
-    this.urt4.com.on('cvar', this.onCvar.bind(this));
+    this.com.on('fs_restart', this.onMaps.bind(this));
+    this.sv.on('cfg', this.onCfg.bind(this));
+    this.sv.on('map', this.onMap.bind(this));
+    this.com.on('in', this.onIn.bind(this));
+    this.com.on('cvar', this.onCvar.bind(this));
 
     this.startup();
   }
 
   async startup() {
+    await this.urt4.$info[this.$.ready];
+
     // get map list and modes
-    this.gametypesDir = `${this.urt4.cwd}/q3ut4/gametypes`;
     this.matchSetting = this.matchSettingFunc.bind(this);
     const mapsArr = await this.urt4.rpc('com getmaps ');
     const maps = mapsArr.split('\n');
     maps.shift();
-    await this.onMaps({maps});
+    //await this.onMaps({maps});
+    await this.urt4.com.emit('fs_restart', {maps});
 
     // get current map
-    await this.onMap({map: await this.urt4.rpc('com getcvar mapname')});
+    const map = await this.urt4.rpc('com getcvar mapname');
+    //await this.onMap({map});
+    await this.sv.emit('map', {map});
+    await this.$players.getCfgMap();
+    await this.$players.initExistingClients();
+
+    const info = await this.urt4.$info.getServerInfo();
+    await this.$players.initClientAuths(info);
+    await this.$qvm.emit('game', {});
+    await this.$qvm.emit('world', {});
+
+    const pbt = info.playersByTeam;
+    //if (info.Scores && (!('RED' in pbt) || !('BLUE' in pbt))) await this.$qvm.emit('warmup', {}); else
+    await this.$qvm.emit('round', {});
   }
-
-  /*async getModes() {
-    this.modes = {};
-    this.modeSets = {};
-    const modes = await readdir(this.gametypesDir);
-
-    for (const mode of modes) {
-      try {
-        const descText = await readFile(`${this.gametypesDir}/${mode}/desc.txt`, 'utf8');
-        const desc = descText.split(this.$.rxCrLf).join(' ').trim();
-
-        let maps;
-
-        try {
-          const mapsText = await readFile(`${this.gametypesDir}/${mode}/mapcycle.txt`, 'utf8');
-          maps = mapsText.split(this.$.rxCrLf).map(this.trim).filter(this.notFalsy);
-        } catch (err) { maps = []; }
-
-        let sets;
-
-        try {
-          const setsText = await readFile(`${this.gametypesDir}/${mode}/set.cfg`, 'utf8');
-          const setsItems = setsText.split(this.$.rxCrLf).map(this.trim).filter(this.notFalsy);
-
-          sets = Object.assign({}, ...setsItems
-            .map(this.matchSetting)
-            .filter(this.notFalsy)
-            .map(this.convMatchedObject)
-          );
-        } catch (err) { sets = {}; }
-
-        const mapObjs = {};
-        this.setMaps(maps, mapObjs);
-
-        this.modes[mode] = {sets, maps, mapObjs, desc};
-        Object.assign(this.modeSets, sets);
-      } catch (err) { }
-    }
-
-    if (this.map) await this.onMap({map: this.map});
-  }*/
 
   async getModes() {
     const {$mod} = this.$db;
@@ -360,7 +335,8 @@ class Mod extends Cmd {
     const modeObj = this.modes[mode];
     const modeDesc = modeObj ? modeObj.desc : 'unknown mode';
     $players.chat(null, `^3Changing map to ^5${map}^3 at ^2${modeDesc}`);
-    this.urt4.cmd('com in bigtext "^2Please wait..."');
+    this.urt4.cmd('com in bigtext "^2Please wait!"');
+    this.urt4.cmd('sv cfg 1001 "^2... ^1map is loading ^2..."');
 
     await this.$.delay(1000);
     this.urt4.cmd(`com in g_nextmap ${map}`);
@@ -400,13 +376,17 @@ class Mod extends Cmd {
     blames.push(null);
   }
 
-  async ['ANY+ game [<mode>]: Set next game mode / show current mode']({as, blames, args: [mode]}) {
+  async ['ANY+ game [<mode>]: Set next game mode / show next game mode']({as, blames, args: [mode]}) {
     const {$players} = this;
 
     if (!mode) {
-      const gmode = await this.urt4.rpc('com getcvar nodeurt_mode');
+      const [gmode, nextmap] = await this.urt4.rpcs([
+        'com getcvar nodeurt_mode',
+        'com getcvar g_nextmap'
+      ]);
+
       const obj = this.modes[gmode];
-      return `^3Current game mode is ^5${obj ? obj.desc : 'unknown'}`;
+      return `^3Game mode for next map ^5${nextmap}^3 is ^5${obj ? obj.desc : gmode || 'unknown'}`;
     }
 
     if (as.level < this.admin.$.levels.tmod) return this.admin.$.cmdErrors.access;
@@ -488,7 +468,17 @@ class Mod extends Cmd {
     const {$players} = this;
 
     if (!name) {
-      const nextmap = await this.urt4.rpc(`com getcvar g_nextmap`);
+      const [gmode, curmode, nextmap] = await this.urt4.rpcs([
+        'com getcvar nodeurt_mode',
+        'com getcvar nodeurt_curmode',
+        'com getcvar g_nextmap'
+      ]);
+
+      if (curmode !== gmode) {
+        const obj = this.modes[gmode];
+        return `^3Next map is ^5${nextmap}^3 in other game mode: ^5${obj ? obj.desc : gmode || 'unknown'}`;
+      }
+
       return `^3Next map is ^5${nextmap}`;
     }
 

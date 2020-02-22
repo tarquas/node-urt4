@@ -160,7 +160,7 @@ class Votes extends Cmd {
       modeObj = $mod.modes[subj.mode];
 
       if (modeObj) {
-        texts.push(`^7Change game mode to ^3${modeObj.desc}^7?`);
+        texts.push(`^7Change game mode for next map to ^3${modeObj.desc}^7?`);
       }
     }
 

@@ -118,15 +118,15 @@ Urt4_Hook(void, SV_ClientEnterWorld, (struct client_s *client, struct usercmd_s 
 int urt4_comSvRunningGet(void);
 
 int hkPlayersWasPrev = 0;
-int hkGentsWasPrev = 0;
+//int hkGentsWasPrev = 0;
 
 char hkClientsPrev[MAX_CLIENTS];
 playerState_t hkPlayersPrev[MAX_CLIENTS];
 char hkPlayersDirty[MAX_GENTITIES];
 
-char hkHasGentsPrev[MAX_GENTITIES];
+/*char hkHasGentsPrev[MAX_GENTITIES];
 sharedEntity_t hkGentsPrev[MAX_GENTITIES];
-char hkGentsDirty[MAX_GENTITIES];
+char hkGentsDirty[MAX_GENTITIES];*/
 
 void hkProcessPlayers(void) {
 	int i;
@@ -174,7 +174,7 @@ void hkProcessPlayers(void) {
 	}
 }
 
-void hkProcessEntities(void) {
+/*void hkProcessEntities(void) {
 	int i;
 	sharedEntity_t *es;
 	char pfx[65536];
@@ -207,33 +207,106 @@ void hkProcessEntities(void) {
 					hkHasGentsPrev[i] = 0;
 				}
 
-				apiGetEntityState(pfx, i);
+				//apiGetEntityState(pfx, i);
 			} else if (es) {
 				if (hkCmpEntityState(&hkGentsPrev[i], es)) {
 					hkGentsDirty[i] = 1;
 					snprintf(pfx, 65536, "sv ent %d", i);
 					memcpy(&hkGentsPrev[i], es, sizeof(sharedEntity_t));
-					apiGetEntityState(pfx, i);
+					//apiGetEntityState(pfx, i);
 				}
 			}
 		}
 	}
+}*/
+
+//int nEntUps;
+//int entUps[10000];
+sharedEntity_t entCache[MAX_GENTITIES] = {0};
+
+Urt4_Hook(intptr_t, SV_GameSystemCalls, (intptr_t *args)) {
+  //int i, *to;
+  //sharedEntity_t *es;
+
+  /*if (args[0] == BOTLIB_UPDATENTITY) {
+    i = args[1];
+    es = SV_GentityNum(i);
+
+    if (memcmp(&entCache[i], es, sizeof(sharedEntity_t))) {
+			to = &entUps[nEntUps++];
+			*to = i;
+      memcpy(&entCache[i], es, sizeof(sharedEntity_t));
+		}
+  }*/
+
+  return urt4_SV_GameSystemCalls(args);
+}
+
+int svFollow_inited = 0;
+
+void hkProcessEntities(void) {
+  char pfx[64];
+  int i, j;
+  //int u;
+  sharedEntity_t *es;
+  SvFollow_Ent *ef;
+
+  /*for (u = 0; u < nEntUps; u++) {
+    i = entUps[u];
+    snprintf(pfx, 65536, "sv ent %d", i);
+    apiGetEntityStateUp(pfx, i, &entCache[i]);
+  }*/
+
+	if (!svFollow_inited) {
+		svFollow_reset();
+		svFollow_inited = 1;
+	}
+
+  for (i = 0; i < MAX_GENTITIES; i++) {
+    es = SV_GentityNum(i);
+    if (!es) continue;
+
+    if (memcmp(&entCache[i], es, sizeof(sharedEntity_t))) {
+      memcpy(&entCache[i], es, sizeof(sharedEntity_t));
+      snprintf(pfx, 65536, "sv ent %d", i);
+      apiGetEntityStateUp(pfx, i, es);
+
+      // Follow ent
+      for (j = i; j >= 0; j = ef->parent) {
+        ef = svFollow_get(j);
+        ef->dirty = 1;
+      }
+		}
+  }
 }
 
 void hkProcessFollow(void) {
+	int i;
+	SvFollow_Ent *ent;
+
+	for (i = 0; i < MAX_GENTITIES; i++) {
+		ent = svFollow_get(i);
+		if (ent->dirty) svFollow_processTree(i);
+	}
 }
 
 Urt4_Hook(void, SV_Frame, (int msec)) {
-	if (!urt4_comSvRunningGet()) Api_processInbound();
+	if (urt4_comSvRunningGet()) Api_send("sv frame");
+  else Api_processInbound();
 	urt4_SV_Frame(msec);
-	hkProcessPlayers();
-	hkProcessEntities();
-	hkProcessFollow();
 }
 
 Urt4_Hook(void, SV_SendClientMessages, (void)) {
 	if (urt4_comSvRunningGet()) Api_processInbound();
+  int qvnEnts = sv.num_entities;
+  sv.num_entities = MAX_GENTITIES; // send snapshot of all entities
+
+	hkProcessPlayers();
+	hkProcessEntities();
+	hkProcessFollow();
+
 	urt4_SV_SendClientMessages();
+  sv.num_entities = qvnEnts;
 }
 
 // ServerCommand
@@ -344,6 +417,20 @@ int Api_exec_sv(long long rpcId, const char *cmd) {
 		return 1;
 	}
 
+	if (!memcmp(cmd, "btn ", 4)) {
+		cmd += 4;
+		int len, slot, btn;
+		if (sscanf(cmd, "%d %d%n", &slot, &btn, &len) != 2) return 0;
+		cmd += len;
+    client_t *cl = &svs.clients[slot];
+    usercmd_t uc;
+    memcpy(&uc, &cl->lastUsercmd, sizeof(uc));
+    uc.serverTime = sv.time;
+    uc.buttons |= btn;
+    SV_ClientThink(cl, &uc);
+		return 1;
+	}
+
 	if (!memcmp(cmd, "cfg ", 4)) {
 		cmd += 4;
 		int len, cfgId;
@@ -430,6 +517,35 @@ int Api_exec_sv(long long rpcId, const char *cmd) {
 		char pfx[64];
 		snprintf(pfx, 64, "rpc %lld sv findent %i", rpcId, entId);
 		apiFindEntities(pfx, entId, cmd, NULL, NULL);
+		return 1;
+	}
+
+	if (!memcmp(cmd, "followfree ", 11)) {
+		cmd += 10;
+		int len, entId;
+		if (sscanf(cmd, "%d%n", &entId, &len) != 1) return 0;
+		cmd += len;
+    svFollow_setRelation(entId, -1);
+    return 1;
+  }
+
+	if (!memcmp(cmd, "followreset ", 12)) {
+		cmd += 12;
+    svFollow_reset();
+    return 1;
+  }
+
+	if (!memcmp(cmd, "followset ", 10)) {
+		cmd += 10;
+		int len, entId, parentId;
+    float p[3], a[3];
+		if (sscanf(cmd, "%d %d %f %f %f %f %f %f%n", &entId, &parentId,
+      &p[0], &p[1], &p[2], &a[0], &a[1], &a[2],
+      &len) != 8) return 0;
+		cmd += len;
+    SvFollow_Ent *ent = svFollow_setRelation(entId, parentId);
+    svFollow_setCoords(ent, p, a);
+    svFollow_processTree(parentId);
 		return 1;
 	}
 
@@ -620,6 +736,20 @@ int Api_exec_sv(long long rpcId, const char *cmd) {
 		snprintf(msg2, 64, "rpc %lld %d", rpcId, svs.time);
 		Api_send(msg2);
 		return 1;
+	}
+
+	if (!memcmp(cmd, "gs ", 3)) {
+    cmd += 3;
+    int len, slot, entSkip;
+    if (sscanf(cmd, "%d %d%n", &slot, &entSkip, &len) != 2) return 0;
+    cmd += len;
+    if (*cmd != ' ') return 0;
+    cmd++;
+    char *value = strchr(cmd, '\n');
+    if (!value) return 1;
+    *value = 0;
+    apiSendGameState(slot, entSkip, cmd, value + 1);
+    return 1;
 	}
 
 	if (!memcmp(cmd, "info ", 5)) {

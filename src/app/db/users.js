@@ -7,6 +7,7 @@ class Users extends Db.Mongo.Model {
       known: [String],
       name: [String],
       auth: [String],
+      pwd: String,
       guid: [String],
       ip: [String],
       ipStat: this.Schema.Types.Mixed, // {[ip]: {nConns, pingSum, last}}
@@ -57,6 +58,22 @@ class Users extends Db.Mongo.Model {
     if (!ok) return false;
     await this.model.remove({_id: from}).exec();
     return true;
+  }
+
+  async authPwd(auth, pwd) {
+    const user = await this.model.findOne({auth, pwd}, {pwdOnce: 1}).lean().exec();
+    if (user && user.pwdOnce) await this.model.updateOne({_id: user._id}, {$unset: {pwd: 1, pwdOnce: 1}}).exec();
+    return user;
+  }
+
+  async setAuthPwd(auth, pwd, pwdOnce) {
+    const user = await this.model.findOneAndUpdate({auth}, {$set: {pwd, pwdOnce}}).lean().exec();
+    return user;
+  }
+
+  async getAliases(_id) {
+    const user = await this.model.findOne({_id}, {name: 1}).lean().exec();
+    return user && user.name;
   }
 
   async getUser(player) {

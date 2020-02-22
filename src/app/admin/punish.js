@@ -3,12 +3,13 @@ const Cmd = require('./cmd');
 class Punish extends Cmd {
   async init(deps) {
     await deps({
-      ...this.$.pick(this.admin, '$players', '$votes')
+      ...this.$.pick(this.admin, '$players', '$votes', '$qvm', '$info')
     });
 
     this.$players.on('user', this.onUser.bind(this));
     this.$players.on('info', this.onInfo.bind(this));
     this.urt4.sv.on('clcmd', this.onClCmd.bind(this));
+    this.$qvm.on('spawn', this.onSpawn.bind(this));
   }
 
   async onUser({client}) {
@@ -34,6 +35,13 @@ class Punish extends Cmd {
     }
   }
 
+  async onSpawn({client}) {
+    const player = this.$players.clients[client];
+    if (!player) return;
+    const ang = this.$.get(player, 'punish', 'tilt', 'ang');
+    if (ang) this.urt4.cmd(`sv ps ${client} ang 0 0 ${ang}`);
+  }
+
   async spamMute(p) {
     const now = +new Date();
     const msec = this.$.msecSpamMute;
@@ -55,8 +63,8 @@ class Punish extends Cmd {
 
   async onClCmd({client, cmd}) {
     const player = this.$players.clients[client];
-    if (!player || player.dropped) return 1;
-    if (!this.$.rxSpamMuteCmd.test(cmd)) return;
+    if (!player || player.dropped) return true;
+    if (!this.$.rxSpamMuteCmd.test(cmd)) return false;
 
     const spamScore = 0 | this.$.get(player, 'punish', 'spam', 'score');
     const spamLast = this.$.get(player, 'punish', 'spam', 'last');
@@ -74,7 +82,7 @@ class Punish extends Cmd {
 
   // CMD
 
-  async ['MOD+ ban <player> [<time|"permanent"> <reason>]: Bans a player / checks a ban'](
+  async ['MOD+ ban <player> [<time|"permanent"> <reason|rule>]: Bans a player / checks a ban'](
     {as, blames, args: [player, time, ...reasons]}
   ) {
     if (!player) return this.admin.$.cmdErrors.help;
@@ -90,8 +98,8 @@ class Punish extends Cmd {
       if (!cur) return `${this.$players.name(p)} ^3is ^2not^3 banned`;
 
       return `${this.$players.name(p)} ^3is banned for ^5${
-        this.urt4.showTimeSpan(msec)
-      }^3. Reason: ^2${reason}`;
+        this.urt4.showTimeSpan(cur.until - now)
+      }^3. Reason: ^2${cur.reason}`;
     }
 
     if (cur) {
@@ -110,7 +118,7 @@ class Punish extends Cmd {
       }
     }
 
-    const reason = reasons.join(' ');
+    let reason = reasons.join(' ');
     if (!reason) return `^1Error ^3You must specify a reason for this ban`;
     let ban;
 
@@ -390,6 +398,15 @@ class Punish extends Cmd {
       this.$players.kick(p, reason);
       this.$players.chat(null, `^3Player ${whom}^3 has been ^2kicked`);
     })();
+  }
+
+  async ['MOD+ tilt <player> <angle>: Tilt player\'s head']({as, blames, args: [player, angle]}) {
+    const p = this.$players.find(player, as, true);
+    blames.push(null);
+    const ang = (((angle | 0) + 180) % 360) - 180;
+    this.urt4.cmd(`sv ps ${p.client} ang 0 0 ${angle}`);
+    await this.$players.set(p, {'punish.tilt': {ang}});
+    return `^3You have just set head of ${this.$players.name(p)} tilted to ${angle}`;
   }
 }
 

@@ -4,6 +4,7 @@ const child = require('child_process');
 
 const {App, Thread} = require('clasync');
 const DbHub = require('./db');
+const DiscordBot = require('./ints/discord');
 
 const Urt4 = require('./urt4');
 
@@ -18,7 +19,8 @@ class Main extends App {
 
     await deps({
       $db: DbHub.new(this.db),
-      //$landing: Thread.Pool.new({filename: `${__dirname}/app/web/landing/thread.js`, min: 1, max: 1})
+      $landing: Thread.Pool.new({filename: `${__dirname}/web/landing/thread.js`, min: 1, max: 1}),
+      $discordBot: DiscordBot.new(this.discordBot)
     });
 
     this.createServer();
@@ -70,6 +72,7 @@ class Main extends App {
     const cmd = rawcmd.toString();
 
     if (cmd === '~q\n') return this.$.exit(0);
+    if (cmd === '~qq\n') return process.exit(0);
 
     if (cmd === '~ls\n') {
       for (const urt4 of Object.values(this.urt4s)) {
@@ -100,12 +103,14 @@ class Main extends App {
       console.log('* Overall commands:');
       console.log('~ -- disable all regular output (previously enabled by "~echo on", "~cvar on", and "~act on" on any server).');
       console.log('~q -- quit from mod');
+      console.log('~qq -- kill mod');
       console.log('~ls -- list Urt servers (PIDs, UDP ports, host names) controlled by this mod.');
       console.log('~<Number> -- switch to server #<Number>, f.x. "~1" -- switch to #1.');
       console.log('~run <port> [<config>] -- start Urt4 engine on port <port> and exec <config> (default: "server.cfg").');
       console.log('');
       console.log('* Commands in current server:');
       console.log('~act [<on|1|off|0>] -- log client/server commands.');
+      console.log('~cfg [<on|1|off|0>] -- log config var changes.');
       console.log('~echo [<on|1|off|0>] -- log console output.');
       console.log('~cvar [<on|1|off|0>] -- log CVar changes.');
       console.log('~cvar <name> <value> -- force set CVar value.');

@@ -172,15 +172,15 @@ module.exports = {
 
       mapsAdd: [
         'ut4_turnpike',
-        'ut4_tohunga_b8',
-        'ut4_abbey',
-        'ut4_paris',
         'ut4_orbital_sl',
-        'ut4_beijing_b3',
-        'ut4_kingpin',
+        'ut4_tohunga_b8',
         'ut4_algiers',
+        'ut4_abbey',
+        'ut4_beijing_b3',
+        'ut4_paris',
         'ut4_uptown',
-        'ut4_village_'
+        'ut4_kingpin',
+        'ut4_village'
       ]
     },
 
@@ -289,15 +289,15 @@ module.exports = {
         'ut4_turnpike',
         'ut4_tohunga_b8',
         'ut4_abbey',
-        'ut4_paris',
+        'ut4_thingley',
         'ut4_orbital_sl',
+        'ut4_sanc',
         'ut4_beijing_b3',
         'ut4_kingdom',
         'ut4_austria',
-        'ut4_algiers',
         'ut4_casa',
         'ut4_uptown',
-        'ut4_riyadh',
+        'ut4_cambridge_fixed',
         'ut4_facade_b5',
         'ut4_prague'
       ]

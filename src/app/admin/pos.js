@@ -9,7 +9,12 @@ class Pos extends Cmd {
       ...this.$.pick(this.admin, '$players', '$mod', '$qvm')
     });
 
-    //this.sv.on('ent', this.onEnt.bind(this));
+    this.ent = {};
+    this.ps = {};
+
+    this.sv.on('ent', this.onEnt.bind(this));
+    this.sv.on('ps', this.onPs.bind(this));
+
     this.$qvm.on('begin', this.onBegin.bind(this));
     this.$mod.on('map', this.onMap.bind(this));
     this.$players.on('team', this.onTeam.bind(this));
@@ -19,6 +24,74 @@ class Pos extends Cmd {
     this.exhaustWorkerBound = this.exhaustWorker.bind(this);
     this.exhaustWorkerBound();
   }
+
+  getFollowers(c) {
+    const p = this.$players.clients[c];
+    if (!p) return;
+
+    const followers = (
+      Object.entries(this.ps)
+      .filter(([k, {player}]) => player[3] == 4 && k != c && player[4] == c)
+      .map(([k]) => k)
+    );
+
+    return followers;
+  }
+
+  findPlayerByPoint(pt) {
+    
+  }
+
+  diffState(s1, s2) {
+    const result = {};
+    const keys = Object.keys(s1);
+    
+    for (const key of keys) {
+      const a1 = s1[key];
+      const a2 = s2[key];
+
+      for (let i = 0; i < a1.length; i++) if (a1[i] !== a2[i]) {
+        result[key] = a2;
+        break;
+      }
+    }
+
+    if (this.$.hasKeys(result)) return result;
+    return null;
+  }
+
+  onState({id, state, type}) {
+    const s = this.$players.getState(state);
+    const ex = this[type];
+
+    let p = ex[id];
+
+    if (
+      !s ||
+      (type === 'ent' && (!s || !s.link || !s.link[0])) ||
+      (type === 'ps' && (!s || !s.player || !s.player[3]))
+    ) {
+      if (p) {
+        delete ex[id];
+        this.emit(type, {id, prev: p, cur: null});
+      }
+
+      return;
+    }
+
+    ex[id] = s;
+
+    if (!p) {
+      this.emit(type, {id, prev: null, cur: s});
+      return;
+    }
+
+    const diff = this.diffState(p, s);
+    if (diff) this.emit(type, {id, prev: p, cur: s, diff});
+  }
+
+  onEnt({id, state}) { this.onState({id, state, type: 'ent'}); }
+  onPs({client, state}) { this.onState({id: client, state, type: 'ps'}); }
 
   async exhaustWorker() {
     const {infSta} = this.$mod.sets;
@@ -58,7 +131,7 @@ class Pos extends Cmd {
   async onClCmd(arg) {
     const {cmd, client} = arg;
     const player = this.$players.clients[client];
-    if (!player || player.dropped) return 1;
+    if (!player || player.dropped) return true;
 
     if (
       this.$mod.sets.saveLoadBind &&
@@ -93,7 +166,7 @@ class Pos extends Cmd {
 
   async onBegin({client}) {
     const player = this.$players.clients[client];
-    if (!player || player.dropped) return 1;
+    if (!player || player.dropped) return true;
 
     if (
       this.$mod.sets.sameResp &&
@@ -122,10 +195,6 @@ class Pos extends Cmd {
     for (const cmd of jumpCmds) {
       cmds[cmd].level = level;
     }
-  }
-
-  async onEnt({id: client, state}) {
-
   }
 
   getPosState(state) {

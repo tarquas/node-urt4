@@ -26,6 +26,16 @@ class Info extends Cmd {
     this.$.set(player, '$info', 'tipsShown', true);
   }
 
+  async getRule(idArg) {
+    const mode = await this.urt4.rpc(`com getcvar nodeurt_mode`);
+    const modeObj = this.$mod.modes[mode];
+    const rules = modeObj.rules;
+    const id = (idArg + '').toLowerCase();
+    const rule = rules.rules[id];
+    if (!rule) return null;
+    return rule;
+  }
+
   async rulesCmd({as, args: [idArg, to]}) {
     const mode = await this.urt4.rpc(`com getcvar nodeurt_mode`);
     const modeObj = this.$mod.modes[mode];
@@ -38,13 +48,8 @@ class Info extends Cmd {
     if (to) {
       if (as.level < this.admin.$.levels.mod) return this.admin.$.cmdErrors.access;
       const p = this.$players.find(to, as, true);
-
-      this.$players.chat(p, [
-        `^2Moderator^3 paid your attention to a ^5rule^3:`,
-        '',
-        ...rule
-      ]);
-
+      this.$players.chat(null, `^2Moderator^3 paid attention of ^5${this.$players.name(p)}^3 to rule ^2${id}^3:`);
+      this.$players.chat(p, rule);
       return `^3Rule ^5${id}^3 has been sent to ${this.$players.name(p)}`;
     }
 

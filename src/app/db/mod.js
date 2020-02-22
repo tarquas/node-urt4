@@ -89,7 +89,7 @@ class Mod extends Db.Mongo.Model {
 
 Mod.defaultAlias = 'default';
 Mod.valueKeys = ['enabled', 'desc', 'rules'];
-Mod.ownKeys = ['maps'];
+Mod.ownKeys = ['maps', 'nextmode'];
 Mod.objectKeys = ['pre', 'post', 'mod'];
 Mod.arrayKeys = ['mapsAdd', 'mapsDel'];
 

@@ -5,6 +5,8 @@ class Dbg extends Cmd {
     await deps({
       ...this.$.pick(this.admin, '$players')
     });
+
+    this.nextBotId = 0;
   }
 
   // CMD
@@ -75,9 +77,10 @@ class Dbg extends Cmd {
     return this.trace({...args, cte: 1});
   }
 
-  async ['ADMIN+ bring <from> <to> [<x> <y> <z>]: Trace']([from, to, x, y, z]) {
-    const {pos} = this.getState(await this.urt4.rpc(`sv getent ${from | 0 || this.getClient(from)}`));
+  async ['ADMIN+ bring <what> <where> [<x> <y> <z>]: Move entity to position of other ']([to, from, ...delta]) {
+    let {pos} = this.getState(await this.urt4.rpc(`sv getent ${from | 0 || this.getClient(from)}`));
     const entId = to | 0;
+    pos = pos.map((v, i) => v + (delta[i] | 0));
 
     if (entId >= 64) {
       this.urt4.cmd(`sv ent ${entId} ${pos.join(' ')}`);
@@ -86,6 +89,72 @@ class Dbg extends Cmd {
     }
 
     return `^2Success`;
+  }
+
+  async ['ADMIN+ cfgkv <player> <cfgId> <key> <value> : Set config key-value item']({as, args: [player, id, key, value]}) {
+    if (!player) return this.admin.$.cmdErrors.help;
+    const p = this.$players.find(player, as);
+    const cfgId = id | 0;
+    const cfg = await this.urt4.rpc(`sv getcfg ${cfgId}`);
+    const rx = new RegExp(`\\\\${key}\\\\[^\\\\]*`);
+    const newCfg = cfg.replace(rx, `\\${key}\\${value}`);
+    const cmds = this.urt4.clientCfg(p.client, cfgId, newCfg);
+    this.urt4.cmds(cmds);
+    return `^3OK`;
+  }
+
+  async ['ADMIN+ dbgpak <player> <map> : Send mapchange to client']({as, args: [player, map]}) {
+    if (!player) return this.admin.$.cmdErrors.help;
+    const p = this.$players.find(player, as);    
+
+    const [src0, src1, paks, paknames] = await this.urt4.rpcs([
+      ...[0, 1].map(cfgId => `sv getcfg ${cfgId}`),
+      'com getcvar sv_paks',
+      'com getcvar sv_pakNames'
+    ]);
+
+    const pakCsums = paks.split(' ');
+    const pakNames = paknames.split(' ');
+    const pakNameIdx = this.$.invert(pakNames);
+
+    const cfg0 = src0.replace(this.$.rxCfgMapname, `\\mapname\\${map}`);
+    const idx = pakNameIdx[map];
+
+    const cfg1 = idx in pakCsums ? (src1
+      .replace('\\sv_referencedPakNames\\', `\\sv_referencedPakNames\\q3ut4/${map} `)
+      .replace('\\sv_referencedPaks\\', `\\sv_referencedPaks\\${pakCsums[idx]} `)
+    ) : src1;
+
+    this.urt4.cmd(`sv gs ${p.client} 1 ${cfg0}\n${cfg1}`);
+    return `^3OK`;
+  }
+
+  async ['ADMIN+ dbgpakback <player> : Return player to original map after dbgpak']({as, args: [player, map]}) {
+    if (!player) return this.admin.$.cmdErrors.help;
+    const p = this.$players.find(player, as);
+    const [cfg0, cfg1] = await this.urt4.rpcs([0, 1].map(cfgId => `sv getcfg ${cfgId}`));
+    const cmd = `sv gs ${p.client} 0 ${cfg0}\n${cfg1}`;
+    this.urt4.cmd(cmd);
+    return `^3OK`;
+  }
+
+  async ['SUP+ bot [<name>] [<team>] : Add bot to team']({as, args: [name, team]}) {
+    const teamId = this.$players.getTeamId(team);
+    const t = this.$.botTypes;
+    const type = t[(Math.random() * t.length) | 0];
+    const skill = ((Math.random() * 4) | 0) + 1;
+    if (!name) name = `Bot #${this.nextBotId++}`;
+    this.urt4.cmd(`com in addbot ${type} ${skill} ${teamId} 1 ${name}`);
+    await this.$.delay(100);
+    return `^2Bot ^5${name}^3 added to team ${teamId}`;
+  }
+
+  async ['SUP+ kickbots : Remove all bots']({as, args: [name, team]}) {
+    this.urt4.cmd(`com in kick allbots`);
+  }
+
+  async ['ADMIN+ eval <expr> : Evaluate JS expression']({as, argLine}) {
+    return argLine + ': ' + JSON.stringify(await eval(`(${argLine})`), null, 2);
   }
 }
 
@@ -137,6 +206,11 @@ Dbg.surfaces = {
 };
 
 Dbg.surfaceNames = Dbg.invert(Dbg.surfaces);
+
+Dbg.botTypes = (
+  'boa,cheetah,chicken,cobra,cockroach,cougar,goose,mantis,penguin,puma,' +
+  'python,raven,scarab,scorpion,tiger,widow'
+).split(',');
 
 module.exports = Dbg;
 

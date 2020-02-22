@@ -21,10 +21,11 @@ while [ true ]; do
       +set fs_basepath . \
       +set fs_libpath . \
       +set fs_homepath . \
-      +set sv_maxclients 24 \
+      +set sv_maxclients 20 \
       +set sv_hostname "^3pwnz^5.pro" \
       +set nodeurt_modes bomb ctf ctf.fun ctf.uz ffa ffa.unleash freeze ts ts.fun ts.uz \
       +set nodeurt_mode ctf \
+      +set nodeurt_discordchan 649944374381379584 \
       +exec server \
       <&0 &echo $! > $PIDFILE
 

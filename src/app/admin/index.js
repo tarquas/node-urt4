@@ -3,9 +3,16 @@ const shq = require('shell-quote');
 const {$} = require('clasync');
 
 const Bugfixes = require('./bugfixes');
+const Stats = require('./stats');
 const Dbg = require('./dbg');
+const DbgEnt = require('./dbg-ent');
+const Follow = require('./follow');
+const FunPak = require('./fun-pak');
+const Hits = require('./hits');
+const Hitpoints = require('./hitpoints');
 const Menu = require('./menu');
 const Mod = require('./mod');
+const Party = require('./party-ctf');
 const Players = require('./players');
 const Pos = require('./pos');
 const Punish = require('./punish');
@@ -26,9 +33,16 @@ class Admin extends $ {
 
     await deps({
       $bugfixes: Bugfixes.new(cfg),
+      $stats: Stats.new(cfg),
       $dbg: Dbg.new(cfg),
+      $dbgEnt: DbgEnt.new(cfg),
+      $follow: Follow.new(cfg),
+      $funPak: FunPak.new(cfg),
+      $hits: Hits.new(cfg),
+      $hitpoints: Hitpoints.new(cfg),
       $menu: Menu.new(cfg),
       $mod: Mod.new(cfg),
+      $party: Party.new(cfg),
       $players: Players.new(cfg),
       $pos: Pos.new(cfg),
       $punish: Punish.new(cfg),
@@ -79,12 +93,12 @@ class Admin extends $ {
     if (!args) args = this.parseArgs(argLine);
 
     try {
-      const result = await cmdObj.handler.call(cmdObj.context, {...custom, cmd, args, as});
+      const result = await cmdObj.handler.call(cmdObj.context, {...custom, cmd, args, as, argLine});
       return result;
     } catch (err) {
       if (err instanceof Error) {
-        this.$.throw(err, `CMD cmd`);
-        return '^2<internal error>';
+        this.$.throw(err, `CMD ${cmd}`);
+        return '^1<internal error>';
       }
 
       return err;

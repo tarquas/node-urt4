@@ -146,7 +146,7 @@ void apiGetPlayerState(const char *pfx, int client) {
 	sharedEntity_t *es = SV_GentityNum(client);
 	client_t *cl = &svs.clients[client];
 
-	if (client < 0 || client >= sv_maxclients->integer || !ps || !es) {
+	if (client < 0 || client >= MAX_CLIENTS || !ps || !es) {
 		snprintf(pl_all, sizeof(pl_all), "%s ps %d void", pfx, client);
 		Api_send(pl_all);
 		return;
@@ -234,15 +234,14 @@ int hkCmpPlayerState(void *vps1, void *vps2) {
 	return 0;
 }
 
-void apiGetEntityState(const char *pfx, int num) {
+void apiGetEntityStateUp(const char *pfx, int num, void *esv) {
 	char pl_all[65536];
 	unsigned l;
+  sharedEntity_t *es = (sharedEntity_t *) esv;
 
-	vec3_t *pos, *ang;
+	vec3_t *pos, *ang, *tposb, *tangb, *tposd, *tangd;
 
-	sharedEntity_t *es = SV_GentityNum(num);
-
-	if (num < 0 || num >= sv.num_entities || !es) {
+	if (num < 0 || num >= MAX_GENTITIES || !es) {  // sv.num_entities
 		snprintf (pl_all, sizeof(pl_all), "%s ent %d void", pfx, num);
 		Api_send(pl_all);
 		return;
@@ -250,13 +249,17 @@ void apiGetEntityState(const char *pfx, int num) {
 
 	pos = &es->r.currentOrigin; //es->s.pos.trBase;
 	ang = &es->r.currentAngles; //es->s.apos.trBase;
+	tposb = &es->s.pos.trBase;
+	tangb = &es->s.apos.trBase;
+	tposd = &es->s.pos.trDelta;
+	tangd = &es->s.apos.trDelta;
 	l = (unsigned) es->s.constantLight;
 
 	snprintf (pl_all, sizeof(pl_all),
 		"%s ent %d"
 		"\npos %0.3f %0.3f %0.3f"
 		"\nang %0.3f %0.3f %0.3f"
-		"\nmodel %i"
+		"\nmodel %i %i"
 		"\nsound %i"
 		"\ntype %i %i"
 		"\nevent %i %i %i %i"
@@ -265,11 +268,14 @@ void apiGetEntityState(const char *pfx, int num) {
 		"\nmins %0.3f %0.3f %0.3f"
 		"\nmaxs %0.3f %0.3f %0.3f"
 		"\nlight %i %i %i %i"
-		"\nrelate %i %i %i %i",
+		"\nrelate %i %i %i %i %i"
+    "\nplayer %i %i %i %i"
+    "\ntpos %i %i %i %0.3f %0.3f %0.3f %0.3f %0.3f %0.3f"
+    "\ntang %i %i %i %0.3f %0.3f %0.3f %0.3f %0.3f %0.3f",
 		pfx, num,
 		(*pos)[0], (*pos)[1], (*pos)[2],
 		(*ang)[0], (*ang)[1], (*ang)[2],
-		es->s.modelindex,
+		es->s.modelindex, es->s.modelindex2,
 		es->s.loopSound,
 		es->s.eType, es->r.bmodel,
 		es->r.svFlags, es->r.singleClient, es->s.event, es->s.eventParm,
@@ -278,10 +284,20 @@ void apiGetEntityState(const char *pfx, int num) {
 		es->r.mins[0], es->r.mins[1], es->r.mins[2],
 		es->r.maxs[0], es->r.maxs[1], es->r.maxs[2],
 		l & 0xFF, (l >> 8) & 0xFF, (l >> 16) & 0xFF, (l >> 24) & 0xFF,
-		es->s.clientNum, es->s.groundEntityNum, es->s.otherEntityNum, es->s.otherEntityNum2
+		es->s.clientNum, es->s.groundEntityNum, es->s.otherEntityNum, es->s.otherEntityNum2, es->r.ownerNum,
+    es->s.powerups, es->s.weapon, es->s.legsAnim, es->s.torsoAnim,
+    es->s.pos.trType, es->s.pos.trTime, es->s.pos.trDuration,
+      (*tposb)[0], (*tposb)[1], (*tposb)[2], (*tposd)[0], (*tposd)[1], (*tposd)[2],
+    es->s.apos.trType, es->s.apos.trTime, es->s.apos.trDuration,
+      (*tangb)[0], (*tangb)[1], (*tangb)[2], (*tangd)[0], (*tangd)[1], (*tangd)[2]
 	);
 
 	Api_send(pl_all);
+}
+
+void apiGetEntityState(const char *pfx, int num) {
+  sharedEntity_t *es = SV_GentityNum(num);
+  apiGetEntityStateUp(pfx, num, es);
 }
 
 #define hkCmpEntityStateItem(item) if (es1->item != es2->item) return 1
@@ -310,13 +326,17 @@ int hkCmpEntityState(void *ves1, void *ves2) {
 	hkCmpEntityStateItem(s.groundEntityNum);
 	hkCmpEntityStateItem(s.otherEntityNum);
 	hkCmpEntityStateItem(s.otherEntityNum2);
+	//hkCmpEntityStateItem(s.powerups);
+	//hkCmpEntityStateItem(s.weapon);
+	//hkCmpEntityStateItem(s.legsAnim);
+	//hkCmpEntityStateItem(s.torsoAnim);
 	return 0;
 }
 
 void apiSetEntityState(int num, const char *state) {
 	unsigned R, G, B, I;
 
-	vec3_t          pos;
+	vec3_t          pos, pos2;
 
 	char cmdc;
 	char cmd[256];
@@ -336,7 +356,7 @@ void apiSetEntityState(int num, const char *state) {
 		cmdc = *pcmd;
 
 		while (cmdc == ' ' || cmdc == '\t' || cmdc == '\n') cmdc = *(++pcmd);
-
+//TODO: epos
 		switch (cmdc) {
 			case 'a': {
 				if (memcmp(cmd, "ang", 4)) break;
@@ -393,19 +413,30 @@ void apiSetEntityState(int num, const char *state) {
 
 					case 'o': {
 						if (memcmp(cmd, "model", 6)) break;
-						sscanf(p += n, "%d%n",
-							&es->s.modelindex, &n);
+						sscanf(p += n, "%d %d%n",
+							&es->s.modelindex, &es->s.modelindex2, &n);
 					}; break;
 				}
 			}; break;
 
 			case 'p': {
-				if (memcmp(cmd, "pos", 4)) break;
-				sscanf(p += n, "%f %f %f%n",
-					&pos[0], &pos[1], &pos[2], &n);
+				switch (*(++pcmd)) {
+          case 'l': {
+            if (memcmp(cmd, "player", 7)) break;
+            sscanf(p += n, "%d %d %d %d%n",
+              &es->s.powerups, &es->s.weapon,
+              &es->s.legsAnim, &es->s.torsoAnim, &n);
+          }; break;
 
-				VectorCopy(pos, es->r.currentOrigin);
-				VectorCopy(pos, es->s.pos.trBase);
+          case 'o': {
+            if (memcmp(cmd, "pos", 4)) break;
+            sscanf(p += n, "%f %f %f%n",
+              &pos[0], &pos[1], &pos[2], &n);
+
+            VectorCopy(pos, es->r.currentOrigin);
+            VectorCopy(pos, es->s.pos.trBase);
+          }; break;
+        }
 			}; break;
 
 			case 'r': {
@@ -432,10 +463,36 @@ void apiSetEntityState(int num, const char *state) {
 			}; break;
 
 			case 't': {
-				if (memcmp(cmd, "type", 5)) break;
-				sscanf(p += n, "%d %d%n",
-					&es->s.eType, &R, &n);
-				es->r.bmodel = (qboolean) R;
+				switch (*(++pcmd)) {
+          case 'a': {
+            if (memcmp(cmd, "tang", 5)) break;
+            sscanf(p += n, "%i %i %i %f %f %f %f %f %f%n",
+              &R, &es->s.apos.trTime, &es->s.apos.trDuration,
+              &pos[0], &pos[1], &pos[2], &pos2[0], &pos2[1], &pos2[2], &n);
+
+            es->s.apos.trType = (trType_t) R;
+            VectorCopy(pos, es->s.apos.trBase);
+            VectorCopy(pos2, es->s.apos.trDelta);
+          }; break;
+
+          case 'p': {
+            if (memcmp(cmd, "tpos", 5)) break;
+            sscanf(p += n, "%i %i %i %f %f %f %f %f %f%n",
+              &R, &es->s.pos.trTime, &es->s.pos.trDuration,
+              &pos[0], &pos[1], &pos[2], &pos2[0], &pos2[1], &pos2[2], &n);
+
+            es->s.pos.trType = (trType_t) R;
+            VectorCopy(pos, es->s.pos.trBase);
+            VectorCopy(pos2, es->s.pos.trDelta);
+          }; break;
+
+          case 'y': {
+            if (memcmp(cmd, "type", 5)) break;
+            sscanf(p += n, "%d %d%n",
+              &es->s.eType, &R, &n);
+            es->r.bmodel = (qboolean) R;
+          }; break;
+        }
 			}; break;
 		}
 	}
@@ -461,7 +518,7 @@ void apiFindEntities(const char *pfx, int from, const char *state, void *vp1, vo
 		for (i = 0; i < nTouch; i++) touch[i] = i;
 	}
 
-	int eType = -1, bmodel = -1, modelindex = -1, loopSound = -1, linked = -1;
+	int eType = -1, bmodel = -1, modelindex = -1, modelindex2 = -1, loopSound = -1, linked = -1;
 
 	char cmdc;
 	char cmd[256];
@@ -484,8 +541,8 @@ void apiFindEntities(const char *pfx, int from, const char *state, void *vp1, vo
 
 			case 'm': {
 				if (memcmp(cmd, "model", 6)) break;
-				sscanf(p += n, "%d%n",
-					&modelindex, &n);
+				sscanf(p += n, "%d %d%n",
+					&modelindex, &modelindex2, &n);
 			}; break;
 
 			case 's': {
@@ -510,6 +567,7 @@ void apiFindEntities(const char *pfx, int from, const char *state, void *vp1, vo
 		if (eType != -1 && es->s.eType != eType) continue;
 		if (bmodel != -1 && es->r.bmodel != bmodel) continue;
 		if (modelindex != -1 && es->s.modelindex != modelindex) continue;
+		if (modelindex2 != -1 && es->s.modelindex2 != modelindex2) continue;
 		if (loopSound != -1 && es->s.loopSound != loopSound) continue;
 		if (linked != -1 && es->r.linked != linked) continue;
 
@@ -537,4 +595,58 @@ void apiFindEntities(const char *pfx, int from, const char *state, void *vp1, vo
 	} else {
 		apiGetEntityState(pfx, -1);
 	}
+}
+
+void apiSendGameState(int slot, int entSkip, const char *cfg0, const char *cfg1) {
+	if (slot < 0 || slot >= sv_maxclients->integer) return;
+
+	client_t *client = &svs.clients[slot];
+	int			start;
+	entityState_t	*base, nullstate;
+	msg_t		msg;
+	byte		msgBuffer[MAX_MSGLEN];
+	const char *cfg;
+
+	client->state = CS_PRIMED;
+	client->pureAuthentic = 0;
+	client->gotCP = qfalse;
+
+	client->gamestateMessageNum = client->netchan.outgoingSequence;
+
+	MSG_Init(&msg, msgBuffer, sizeof(msgBuffer));
+
+	MSG_WriteLong( &msg, client->lastClientCommand );
+
+	SV_UpdateServerCommandsToClient( client, &msg );
+
+	MSG_WriteByte(&msg, svc_gamestate);
+	MSG_WriteLong(&msg, client->reliableSequence);
+
+	for ( start = 0 ; start < MAX_CONFIGSTRINGS ; start++ ) {
+		if (!start && cfg0) cfg = cfg0;
+    else if (start == 1 && cfg1) cfg = cfg1;
+		else cfg = sv.configstrings[start];
+
+		if (cfg[0]) {
+			MSG_WriteByte(&msg, svc_configstring);
+			MSG_WriteShort(&msg, start);
+			MSG_WriteBigString(&msg, cfg);
+		}
+	}
+
+	Com_Memset(&nullstate, 0, sizeof(nullstate));
+
+  int maxEnt = entSkip ? 64 : MAX_GENTITIES;
+
+	for (start = 0; start < maxEnt; start++) {
+		base = &sv.svEntities[start].baseline;
+		if (!base->number) continue;
+		MSG_WriteByte(&msg, svc_baseline);
+		MSG_WriteDeltaEntity(&msg, &nullstate, base, qtrue);
+	}
+
+	MSG_WriteByte(&msg, svc_EOF);
+	MSG_WriteLong(&msg, client - svs.clients);
+	MSG_WriteLong(&msg, sv.checksumFeed);
+	SV_SendMessageToClient(&msg, client);
 }

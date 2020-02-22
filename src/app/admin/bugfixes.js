@@ -4,7 +4,7 @@ class Bugfixes extends Emitter {
   async init(deps) {
     await deps({
       ...this.$.pick(this.urt4, 'sv'),
-      ...this.$.pick(this.admin, '$players', '$pos', '$qvm')
+      ...this.$.pick(this.admin, '$players', '$pos', '$qvm', '$hits')
     });
 
     this.$qvm.on('auth', this.onAuth.bind(this), true);
@@ -14,9 +14,72 @@ class Bugfixes extends Emitter {
     this.sv.on('svcmd', this.onSvCmd.bind(this), true);
     this.sv.on('drop', this.onDrop.bind(this), true);
     this.sv.on('drop', this.onMustDrop.bind(this));
+    this.$hits.on('hit', this.onHit.bind(this));
 
     this.specUpdateProc = this.specUpdate.bind(this);
     this.specUpdateProc();
+  }
+
+  isHitReportFor(hit, c) {
+    const p = this.$players.clients[c];
+    if (!p) return;
+      
+    /*else if (hit.explosion) {
+      if (this.urt4.getBoolean(this.$.get(p, 'prefs', 'noExplHits'))) return;
+    } else if (hit.world) {
+      if (this.urt4.getBoolean(this.$.get(p, 'prefs', 'noWorldHits'))) return;
+    }*/ 
+    if (!this.urt4.getBoolean(this.$.get(p, 'prefs', 'prettyHits'))) {
+      if (!hit.special || !this.urt4.getBoolean(this.$.get(p, 'prefs', 'specialHits'))) return false;
+    }
+
+    return true;
+  }
+
+  reportSpecialHit(hit, c) {
+    const followers = this.$pos.getFollowers(c);
+    if (!followers) return;
+
+    const all = [c, ...followers].filter(c => this.isHitReportFor(hit, c));
+    if (!all.length) return;
+
+    const weaponName = this.$hits.$.weaponNames[hit.weapon] || hit.weapon;
+
+    const damage = `for ^6${hit.dmg} hp^3 ${
+      hit.explosion ? 'explosion ' : ''
+    }damage${hit.hp ? '' : ' ^1to death'}`;
+
+    let text;
+
+    if (c === hit.who) {
+      text = `^2You^3 ${
+        hit.bleed ? 'caused bleeding' : 'hit'
+      } ^5${
+        c === hit.whom ? '^2yourself' : this.$players.name(hit.whom)
+      }^3 with ^1${weaponName}^3 ${damage}`;
+    } else if (c === hit.whom) {
+      text = `^2You^3 ${
+        hit.bleed ? 'are bleeding from' : 'were hit with'
+      } ^1${weaponName}^3 by ^5${
+        this.$players.name(hit.who)
+      }^3 ${damage}`;
+    } else {
+      text = `^5${
+        this.$players.name(hit.who)
+      }^3 ${
+        hit.bleed ? 'caused bleeding' : 'hit'
+      } ^5${
+        this.$players.name(hit.whom)
+      }^3 with ^1${weaponName}^3 ${damage}`;
+    }
+
+    this.$players.message(all, text);
+    //console.log('@', this.$players.ncname(p), ':', this.urt4.noColor(text));
+  }
+
+  async onHit(hit) {
+    this.reportSpecialHit(hit, hit.who);
+    if (hit.who !== hit.whom) this.reportSpecialHit(hit, hit.whom);
   }
 
   async specUpdate() {
@@ -97,16 +160,12 @@ class Bugfixes extends Emitter {
     }
 
     if (this.$.get(player, 'info2', 't') == 3) {
-      if (player.hidden) {
-        name = ' ^7 ';
-      } else {
-        name += ` ${$players.prettifyAuth(p, player, null, true)}`;
+      name += ` ${$players.prettifyAuth(p, player, null, true)}`;
 
-        if (player.following && !this.urt4.getBoolean(this.$.get(p, 'prefs', 'noWatchInfo'))) {
-          name += ` ^7specs ^3${$players.ncname(player.following)}`;
-        } else {
-          name += ` ${$players.levelName(player.level)}`;
-        }
+      if (player.following && !player.hidden && !this.urt4.getBoolean(this.$.get(p, 'prefs', 'noWatchInfo'))) {
+        name += ` ^7specs ^3${$players.ncname(player.following)}`;
+      } else {
+        name += ` ${$players.levelName(player.level)}`;
       }
     }
 
@@ -123,7 +182,7 @@ class Bugfixes extends Emitter {
     const {$players} = this;
     while (!$players.cfgMap) await this.$.delay(100);
     const player = $players.clients[client];
-    if (!player) return 0;
+    if (!player) return false;
 
     const needColor = (
       Object.values($players.clients)
@@ -143,11 +202,11 @@ class Bugfixes extends Emitter {
 
     if (cmds.length) this.urt4.cmds(cmds);
 
-    return 0;
+    return false;
   }
 
   async onUser({player}) {
-    //if (this.urt4.getBoolean(this.$.get(player, 'prefs', 'noNameColor'))) return 0;
+    //if (this.urt4.getBoolean(this.$.get(player, 'prefs', 'noNameColor'))) return false;
     const {$players} = this;
     const players = Object.values($players.clients).filter(p => !p.dropped);
 
@@ -158,7 +217,7 @@ class Bugfixes extends Emitter {
     );
 
     if (cmds.length) this.urt4.cmds(cmds);
-    return 0;
+    return false;
   }
 
   setLocationInfoText(player, text) {
@@ -214,13 +273,28 @@ class Bugfixes extends Emitter {
 
           for (let i = 0; i < items.length; i++) {
             const item = items[i];
-            let [, slot, scores, auth] = item.match(this.$.rxScoresItem) || [];
 
+            let [, slot, scores, auth] = item.match(this.$.rxScoresItem) || [];
             if (!scores) continue;
+
             const p = $players.clients[slot];
             if (!p) continue;
 
-            if (p.hidden && this.$.get(p, 'info2', 't') === '3') {items[i] = ''; ns--;}
+            const scoresArray = scores.split(' ');
+
+            this.$players.emit('scores', {
+              player: p,
+              client: slot,
+              scores: scoresArray,
+              viewerClient: client,
+              viewerPlayer: player,
+            });
+
+            scores = scoresArray.join(' ');
+
+if (scoresArray[10] == -5) console.log('>>>AAA', scores);
+
+            // if (p.hidden && this.$.get(p, 'info2', 't') === '3') {items[i] = ''; ns--;}
 
             // display overridden auth
             if (auth === '---' && p.auth) auth = `${p.auth}`;

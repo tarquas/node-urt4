@@ -10,9 +10,20 @@ class Inv extends Cmd {
     const onGear = this.onGear.bind(this);
 
     this.sv.on('clcmd', this.onPreDrop.bind(this), true);
+    this.$qvm.on('item', this.onItem.bind(this));
+    this.$qvm.on('flag', this.onFlag.bind(this));
+
     this.$qvm.on('info', onGear);
     this.$qvm.on('item', onGear);
     this.$qvm.on('spawn', onGear);
+  }
+
+  onItem({client, item}) {
+    return this.emit('item', {client, item: this.$.items[item]});
+  }
+
+  onFlag({client, event, item}) {
+    return this.emit('flag', {client, event, item: this.$.items[item]});
   }
 
   getSfx(s) {
@@ -195,12 +206,12 @@ class Inv extends Cmd {
     const {cmd} = args;
     const weapDrop = this.$.rxWeapDrop.test(cmd);
     const itemDrop = this.$.rxItemDrop.test(cmd);
-    if (!weapDrop && !itemDrop) return 0;
+    if (!weapDrop && !itemDrop) return false;
     const cfg = await this.checkInv(args);
     if (weapDrop) delete cfg.forceItems; else delete cfg.forceWeapons;
-    if (!cfg.forceWeapons && !cfg.forceItems) return 0;
+    if (!cfg.forceWeapons && !cfg.forceItems) return false;
     //await this.setInv({...args, ...cfg});  // regain weapons on drop?
-    return 1;
+    return true;
   }
 
   getGear(w) {
@@ -463,6 +474,27 @@ Inv.items = { // ut_item_...
   ut_weapon_tod50: 38 // instagib
 };
 
+Inv.powerups = { // in ent: player[0] mask
+  none: 0,
+  // 1
+  team_CTF_redflag: 2,
+  team_CTF_blueflag: 4,
+  team_CTF_neutralflag: 8,
+  ut_item_vest: 16,
+  ut_item_silencer: 32,
+  ut_item_laser: 64,
+  ut_item_nvg: 128,
+  // 256
+  ut_item_helmet: 512,
+  // 1024
+  ut_item_medkit: 2048,
+
+  ut_weapon_bomb: 32768,
+
+  ut_item_extraammo: '',
+  ut_item_apr: '',
+};
+
 Inv.force = {forceWeapons: 'forceWeapons', forceItems: 'forceItems'};
 Inv.spawn = {forceWeapons: 'spawnWeapons', forceItems: 'spawnItems'};
 Inv.itemNames = Inv.invert(Inv.items);
@@ -473,5 +505,6 @@ Inv.rxParses = /([+*@]?)(\w+)/g;
 Inv.rxParse = new RegExp(Inv.rxParses.source);
 Inv.rxSfx = /[\da-z]+$/;
 Inv.rxWeapDrop = /^ut_weapdrop (\w+)/;
+Inv.flagEvents = {drop: 0, return: 1, capture: 2};
 
 module.exports = Inv;

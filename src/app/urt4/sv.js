@@ -12,6 +12,7 @@ class Sv extends Emitter {
     const [, cfgId, cfgValue] = cmd.match(this.$.rxCfg) || [];
 
     if (cfgId) {
+      if (this.urt4.cfgOn) this.urt4.log(`:CFG: ${cfgId} = ${cfgValue}`);
       this.emit('cfg', {index: cfgId | 0, value: cfgValue});
       return;
     }
@@ -48,6 +49,11 @@ class Sv extends Emitter {
 
     if (entId) {
       this.emit('ent', {id: entId | 0, state: entState});
+      return;
+    }
+
+    if (this.$.rxFrame.test(cmd)) {
+      this.emit('frame', {});
       return;
     }
 
@@ -90,6 +96,7 @@ Sv.rxClCmd = /^sv clcmd (\d+) (\d+) ([\S\s]*)$/;
 Sv.rxDropAuth = /^sv authdrop (\d+) (.*)\n([\S\s]*)$/;
 Sv.rxDrop = /^sv drop (\d+) ([\S\s]*)$/;
 Sv.rxEnt = /^sv ent (\d+) ([\S\s]*)$/;
+Sv.rxFrame = /^sv frame$/;
 Sv.rxInfo = /^sv info (\d+) ([\S\s]*)$/;
 Sv.rxMap = /^sv map (\d+) ([\S\s]*)$/;
 Sv.rxPs = /^sv ps (\d+) ([\S\s]*)$/;

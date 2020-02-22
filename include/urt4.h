@@ -22,9 +22,11 @@ extern "C" {
 	void apiGetPlayerState(const char *pfx, int client);
 	int hkCmpPlayerState(void *ps1, void *ps2);
 	void apiSetEntityState(int num, const char *state);
+	void apiGetEntityStateUp(const char *pfx, int num, void *es);
 	void apiGetEntityState(const char *pfx, int num);
 	int hkCmpEntityState(void *es1, void *es2);
 	void apiFindEntities(const char *pfx, int from, const char *state, void *p1, void *p2);
+	void apiSendGameState(int slot, int entSkip, const char *cfg0, const char *cfg1);
 	// follow
 	#include "sv_follow.h"
 

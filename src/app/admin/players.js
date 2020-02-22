@@ -15,6 +15,8 @@ class Players extends Cmd {
     });
 
     this.$qvm.on('auth', this.onAuth.bind(this));
+    this.$qvm.on('connect', this.onConnect.bind(this));
+    this.$qvm.on('disconnect', this.onDisconnect.bind(this));
     this.$qvm.on('begin', this.onBegin.bind(this));
     this.$qvm.on('info', this.onInfo.bind(this));
     this.$qvm.on('info2', this.onInfo2.bind(this));
@@ -23,19 +25,10 @@ class Players extends Cmd {
     this.sv.on('drop', this.onDrop.bind(this));
     this.sv.on('ent', this.onEnt.bind(this));
     this.sv.on('map', this.onMap.bind(this));
-
-    this.startup();
   }
 
   async final() {
     this.clients = {};
-  }
-
-  async startup() {
-    await this.getAuthStatus();
-    await this.getCfgMap();
-    await this.initExistingClients();
-    await this.initClientAuths();
   }
 
   async getCfgMap() {
@@ -59,6 +52,7 @@ class Players extends Cmd {
 
     await this.$.all(infos.map(async (info, i) => {
       if (infos[i]) {
+        await this.onConnect({client: i});
         await this.updateClient(i, info);
       } else {
         await this.deleteClient(i);
@@ -66,15 +60,11 @@ class Players extends Cmd {
     }));
   }
 
-  async initClientAuths() {
-    const {$qvm} = this.admin;
-    const rawPlayers = await this.urt4.rpc('com rpc players');
-    const plines = rawPlayers.split('\n');
+  async initClientAuths(info) {
+    const allPlayers = this.$.flatten(Object.values(info.playersByTeam));
 
-    for (const pline of plines) {
-      const [, client, , auth] = pline.match(this.$.rxRawPlayersAuth) || [];
-      if (!client) continue;
-      await $qvm.emit('auth', {client: client | 0, auth: auth === '---' ? '' : auth});
+    for (const p of allPlayers) {
+      await this.$qvm.emit('auth', {client: p.ID, auth: p.AUTH === '---' ? '' : p.AUTH});
     }
   }
 
@@ -118,10 +108,16 @@ class Players extends Cmd {
     if (ban) this.kick(player, this.banReason(ban));
   }
 
-  async onAuth(info) {
+  async onAuth(info, pwd) {
     const {client, auth} = info;
     const player = this.clients[client];
-    if (!player) return;
+    if (!player) return {error: 'noClient'};
+
+    if (pwd) {
+      const ok = await this.$db.$users.authPwd(auth, pwd);
+      if (!ok) return {error: 'authFail'};
+    }
+
     player.auth = auth;
     await this.$db.$users.getUser(player);
 
@@ -132,20 +128,27 @@ class Players extends Cmd {
       player.banned = ban;
     }
 
-    await this.set(player, this.$.makeObject(Object.entries(info).map(([k, v]) => ({[`authInfo.${k}`]: v}))));
+    if (!pwd) {
+      await this.set(player, this.$.makeObject(Object.entries(info).map(([k, v]) => ({
+        [`authInfo.${k}`]: v
+      }))));
+    }
+
     this.emit('user', {client, player, auth});
   }
 
   async onInfo({client, info}) {
     await this.updateClient(client, info);
-    this.emit('info', {client});
+    const player = this.clients[client];
+    if (!player) return;
+    this.emit('info', {client, player});
   }
 
   async onInfo2({client, info}) {
     const player = this.clients[client];
     if (!player) return;
     player.info2 = this.getInfo(`\\${info}`);
-    this.emit('info2', {client});
+    this.emit('info2', {client, player});
   }
 
   getInfo(ent) {
@@ -221,9 +224,7 @@ class Players extends Cmd {
     player.dropped = {reason, message, at: new Date()};
   }
 
-  async updateClient(client, info) {
-    const pi = this.getInfo(info);
-    const guid = pi.cl_guid || pi.guid;
+  async onConnect({client}) {
     let player = this.clients[client];
 
     if (!player || player.dropped) {
@@ -235,17 +236,33 @@ class Players extends Cmd {
         cmd: {},
         sets: {},
         prefs: {},
-        dialogs: [],
-        guid
+        dialogs: []
       };
     }
+  }
 
+  async onDisconnect({client}) {
+    const player = this.clients[client];
+
+    if (player && !player.dropped) {
+      player.dropped = {reason: 'fake', message: 'disconnected without drop', at: new Date()};
+    }
+  }
+
+  async updateClient(client, info) {
+    let player = this.clients[client];
+    if (!player) return;
+
+    const pi = this.getInfo(info);
+    const guid = pi.cl_guid || pi.guid;
+
+    player.guid = guid;
     player.info = pi;
     player.index = `${this.admin.norm(pi.name)}:${this.admin.norm(pi.authl)}`;
 
     if (!player.ip) {
       const ents = pi.ip && pi.ip.match(this.$.rxIp);
-      player.ip = ents && ents[0];
+      player.ip = (ents && ents[0]) || '0.0.0.0';
     }
 
     const state = await this.getPlayerState(player);
@@ -280,9 +297,9 @@ class Players extends Cmd {
       }
     }
 
-    if (!this.authEngine && !this.authEmuled) {
-      this.authEmuled = true;
-      $qvm.emit('auth', {client, auth: ''});
+    if (!this.authEngine && !player.authEmuled) {
+      player.authEmuled = true;
+      this.$qvm.emit('auth', {client, auth: ''});
     }
   }
 
@@ -403,8 +420,9 @@ class Players extends Cmd {
   }
 
   name(player) {
-    if (!player.info) return `^5console operator`;
-    return `^5${player.info.name}^2#${player.client}^3`;
+    const p = typeof player === 'object' ? player : this.clients[player];
+    if (!p || !p.info) return `^6Server Admin`;
+    return `^5${p.info.name}^2#${p.client}^3`;
   }
 
   ncname(player) {
@@ -494,6 +512,7 @@ class Players extends Cmd {
 
       case e.help:
         const cmdObj = this.admin.cmds[cmd];
+        if (!cmdObj) { this.$.log(`!!! Fake command: ${cmd}`); break; }
         this.chat(client, `^7Usage: ^3"^5${cmd} ^7${cmdObj.args}^3" : ${cmdObj.info}`);
         break;
 
@@ -502,7 +521,7 @@ class Players extends Cmd {
         break;
     }
 
-    return 1;
+    return true;
   }
 
   async execCmd(as, cmd) {
@@ -514,7 +533,7 @@ class Players extends Cmd {
 
   async onClCmd({cmd, client}) {
     const player = this.clients[client];
-    if (!player || player.dropped) return 1;
+    if (!player || player.dropped) return true;
 
     if (this.urt4.act) this.urt4.log(`${this.ncname(player)} > ${cmd}`);
 
@@ -542,7 +561,7 @@ class Players extends Cmd {
       return this.clCmdResult({cmd: sCmd, client, result});
     }
 
-    return 0;
+    return false;
   }
 
   async onSvCmd({cmd, client}) {
@@ -624,7 +643,7 @@ class Players extends Cmd {
   }
 
   async forceTeam(player, teamId) {
-    const nok = await this.emit('team', {player, teamId});
+    const nok = await this.emit('team', {client: player.client, player, teamId});
     if (!nok) this.urt4.cmd(`com in forceteam ${player.client} ${teamId}`);
     return nok;
   }
@@ -673,6 +692,55 @@ class Players extends Cmd {
 
   // CMD
 
+  async ['ANY auth <urt-auth> <password>: Manually authenticate yourself (if UrT auth service is down etc).'](
+    {as, args: [auth, pwd]}
+  ) {
+    if (!auth) return this.admin.$.cmdErrors.help;
+    if (!pwd) return '^1Error ^3You must specify password';
+    const res = await this.onAuth({client: as.client, auth}, pwd);
+    if (this.$.get(res, 'error') === 'authFail') return '^1Error ^3Invalid credentials'; 
+    return `^2AUTH ^3You've successfully logged in as ^5${auth}`;
+  }
+
+  async ['MOD+ alias [<player>]: List alias names for player or yourself.'](
+    {as, args: [player]}
+  ) {
+    const p = this.find(player, as, true);
+    if (!p.dbId) return `^1Error ^3Player is not registered`;
+    const names = await this.$db.$users.getAliases(p.dbId);
+    if (!names || !names.length) return `^1Error ^3Player has no names`;
+
+    const normed = Object.keys(this.$.invert(names.map(name => this.urt4.noColor(name))));
+    const joined = `${normed.join('  ')} `;
+    const chopped = joined.match(this.$.rxChopLine);
+    return [`^2Aliases for ^5${this.name(p)}^2:`, ...chopped];
+  }
+
+  async ['ANY setpassword <password>: Set your permanent password for manual auth. ^1CAUTION: ^3may not be safe!'](
+    {as, args: [pwd]}
+  ) {
+    if (!pwd) return this.admin.$.cmdErrors.help;
+    if (!as.auth) return '^1Error ^3You must be authed to use this feature';
+    await this.$db.$users.setAuthPwd(as.auth, pwd, false);
+    return `^2AUTH ^3You've successfully set up your password for manual auth`;
+  }
+
+  async ['ANY setotp <password>: Set your one-time password for manual auth.']({as, args: [pwd]}) {
+    if (!pwd) return this.admin.$.cmdErrors.help;
+    if (!as.auth) return '^1Error ^3You must be authed to use this feature';
+    await this.$db.$users.setAuthPwd(as.auth, pwd, true);
+    return `^2AUTH ^3You've successfully set up your one-time password for manual auth`;
+  }
+
+  async ['ANY getotp new: Get your one-time password for manual auth.']({as, args: [ok]}) {
+    if (!ok) return this.admin.$.cmdErrors.help;
+    if (ok !== 'new') return '^1Error ^3Please specify "new" as parameter to confirm';
+    if (!as.auth) return '^1Error ^3You must be authed to use this feature';
+    const pwd = parseInt(Math.random()*1e6);
+    await this.$db.$users.setAuthPwd(as.auth, pwd, true);
+    return `^2AUTH ^3Your one-time password is: ${pwd}`;
+  }
+
   async [
     'MOD+ setlevel [<whom>] [<level>]: Set player authentication level / List levels'
   ]({as, args: [whom, level]}) {
@@ -687,6 +755,7 @@ class Players extends Cmd {
 
     const p = this.find(whom, as);
     if (p.dbId === as.dbId) return `^1Error ^3You can't change your own level`;
+
     if (!p.auth) return `^1Error ^3You may not assign a level to players without ^2auth`;
 
     const levelId = this.admin.norm(level) || 'mod';
@@ -899,6 +968,26 @@ class Players extends Cmd {
     ];
   }
 
+  async ['MOD+ move [<player>]: Move player or yourself to different team']({as, blames, args: [player]}) {
+    const p1 = this.find(player, as, true);
+    const cur = this.$.get(p1, 'info2', 't');
+    if (!(cur in this.$.pvpTeam)) return `^1Error ^3Player ^5${this.name(p1)}^3 is not in competing team`;
+    this.urt4.cmd(`com in forceteam ${p1.client} ${this.getTeamId(3 - cur)}`);
+    this.chat(null, `^3Player ${this.name(p1)} has been moved to other team`);
+    blames.push(null);
+    return 0;
+  }
+
+  async ['MOD+ spec [<player>]: Move player or yourself to spectator']({as, blames, args: [player]}) {
+    const p1 = this.find(player, as, true);
+    const cur = this.$.get(p1, 'info2', 't');
+    if (cur == 3) return `^1Error ^3Player ^5${this.name(p1)}^3 is already a spectator`;
+    this.urt4.cmd(`com in forceteam ${p1.client} s`);
+    this.chat(null, `^3Player ${this.name(p1)} has been moved to spectators`);
+    blames.push(null);
+    return 0;
+  }
+
   async ['MOD+ swap <player1> [<player2>]: Exchange players in different teams. Exchange yourself with player in different team']({as, blames, args: [player1, player2]}) {
     if (!player1) return this.admin.$.cmdErrors.help;
     const p1 = this.find(player1, as);
@@ -911,7 +1000,7 @@ class Players extends Cmd {
 
     this.urt4.cmd(`com in swap ${p1.client} ${p2.client}`);
     this.chat(null, `^3Players ${both} have been swapped`);
-    blames.push(p1, p2);
+    blames.push(null);
     return 0;
   }
 
@@ -939,7 +1028,7 @@ class Players extends Cmd {
       if ($mod.sets.fastTeam) {
         nok = await this.forceTeam(as, teamId);
       } else {
-        nok = await this.emit('team', {player: as, teamId});
+        nok = await this.emit('team', {client: as.client, player: as, teamId});
         if (!nok) this.urt4.cmd(`sv clcmd ${as.client} 1 team ${teamId}`);
       }
 
@@ -972,7 +1061,7 @@ class Players extends Cmd {
       }; break;
     }
 
-    blames.push(p);
+    blames.push(null);
     this.chat(null, `^3Player ${this.name(p)}^3 has been moved to team ${this.$.teamDesc[teamId]}`);
     return 0;
   }
@@ -1003,6 +1092,8 @@ Players.rxLocation = /^location (\d+)\n$/;
 Players.rxRawPlayersStats = /^(\d+):.* TEAM:\w+ KILLS:(\d+) DEATHS:(\d+) ASSISTS:(\d+) PING:\d+ AUTH:(?=\w+|---) IP:[\d\.:]+(?=\n(.*))?$/;
 //Players.rxStats = ;
 
+Players.rxChopLine = /\S{1,88}\s+/g;
+
 Players.teams = {
   free: 0,
   red: 1,
@@ -1030,6 +1121,11 @@ Players.playingTeam = {
   2: true
 };
 
+Players.pvpTeam = {
+  1: true,
+  2: true
+};
+
 Players.prefs = {
   noAuthAddon: {type: Boolean, desc: 'Do not expand auth addons of players'},
   noAuthColor: {type: Boolean, desc: 'Do not colorize auths with player level color'},
@@ -1039,7 +1135,14 @@ Players.prefs = {
   noSameResp: {type: Boolean, desc: 'Do not respawn on a place before team change'},
   noSaveLoadBind: {type: Boolean, desc: 'Do not bind drop kevlar to save and drop flag/medkit to load in jump mode'},
   noShowTips: {type: Boolean, desc: 'Do not spam tips after first join'},
-  noInfSta: {type: Boolean, desc: 'Do not make infinite stamina in jump mode'}
+  noInfSta: {type: Boolean, desc: 'Do not make infinite stamina in jump mode'},
+  specialHits: {type: Boolean, desc: 'Report all special hits (which are not reported by game)'},
+  //noExplHits: {type: Boolean, desc: 'Do not report hits from projectile explosions'},
+  //noWorldHits: {type: Boolean, desc: 'Do not report hits from world'},
+  prettyHits: {type: Boolean, desc: 'Report prettified gun hits (if set, recommended to disable Hitting info on client)'},
+  testHitstats: {type: Boolean, desc: 'Test hitstats feature (killpoins in TAB scoreboard)'},
+  testKillpoints: {type: Boolean, desc: 'Report number of killpoints earned by you and your attackers'},
+  testSpecOnly: {type: Boolean, desc: 'Participate in testing only when following others in spec'},
 };
 
 Players.prefSetups = {
@@ -1055,7 +1158,14 @@ Players.prefSetups = {
       noSameResp: 0,
       noSaveLoadBind: 0,
       noShowTips: 0,
-      noInfSta: 0
+      noInfSta: 0,
+      specialHits: 0,
+      //noExplHits: 0,
+      //noWorldHits: 0,
+      prettyHits: 0,
+      testKillpoints: 0,
+      testSpecOnly: 0,
+      testHitstats: 0,
     }
   },
 
@@ -1071,7 +1181,14 @@ Players.prefSetups = {
       noSameResp: 1,
       noSaveLoadBind: 1,
       noShowTips: 1,
-      noInfSta: 1
+      noInfSta: 1,
+      specialHits: 1,
+      //noExplHits: 1,
+      //noWorldHits: 1,
+      prettyHits: 0,
+      testKillpoints: 0,
+      testSpecOnly: 1,
+      testHitstats: 0,
     }
   },
 };
