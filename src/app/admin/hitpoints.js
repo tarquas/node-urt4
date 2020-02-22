@@ -30,9 +30,10 @@ class Hitpoints extends Cmd {
     const testSpecOnly = this.urt4.getBoolean(this.$.get(viewerPlayer, 'prefs', 'testSpecOnly'));
     if (testSpecOnly && this.$.get(viewerPlayer, 'info2', 't') != 3) return;
 
-    scores[0] = Math.round(hs.kills);
-    scores[4] = Math.round(hs.deaths);
-    scores[9] = Math.round(hs.assists);
+    const S = this.$.scores;
+    scores[S.kills] = Math.round(hs.kills);
+    scores[S.deaths] = Math.round(hs.deaths);
+    scores[S.assists] = Math.round(hs.assists);
   }
 
   isTestKillpointsFor(c) {
@@ -152,7 +153,7 @@ class Hitpoints extends Cmd {
     const hitters = isAlly ? hpt.allyHits : hpt.enemyHits;
 
     if (!hitters[who]) hitters[who] = dmg;
-    hitters[who] += dmg;
+    else hitters[who] += dmg;
 
     hpt.damaged += dmg;
 
@@ -172,57 +173,13 @@ Hitpoints.killerBonuses = {
   default: 2
 };
 
+Hitpoints.scores = {
+  kills: 0,
+  ping: 1,
+  time: 2,
+  deaths: 4,
+  assists: 9,
+};
+
 module.exports = Hitpoints;
 
-/*
-
-player: {
-  spawnedAt: Date,
-  enemyHits: {clientId: damage},
-  allyHits: {clientId: damage},
-  damaged: Number,
-  killer: clientId,
-  diedAt: Date
-}
-
-if (player.spawnedAt) {
-  isAlly = hitter == player || (player.info2.t != 0 && player.info2.t == hitter.info2.t);
-  
-}
-
-player.spawnedAt = now;
-
-====
-now = +new Date()
-roundTime = now - player.spawnedAt
-deadTime = now - player.diedAt
-deadRatio = deadTime / roundTime
-aliveRatio = 1 - deadRatio
-deadFactor = deadRatio / player.damaged
-aliveFactor = aliveRatio / player.damaged
-killerId = player.killer
-killerBonus = 2
-teamkillerPenalty
-
-allyTimePivot = (
-  CTF: 0.5,
-  default: 1
-)
-
-player.enemyHits: enemyHit
-  enemyHit.killpoints = (
-    (deadFactor * enemyHit.damage) *
-    (killerId == allyHit.clientId ? killerBonus : 1)
-  )
-
-player.allyHits: enemyHit
-  allyHit.killpoints = (
-    (aliveRatio - aliveFactor * allyTimePivot * allyHit.damage - allyTimePivot) *
-    (killerId == allyHit.clientId ? killerBonus : 1)
-  )
-
-scores:
-0:KILLS 1:PING 2:TIME ? 4:DEATHS 0 0 0 0 9:ASSISTS 0
-
-
-*/

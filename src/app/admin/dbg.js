@@ -154,7 +154,7 @@ class Dbg extends Cmd {
   }
 
   async ['ADMIN+ eval <expr> : Evaluate JS expression']({as, argLine}) {
-    return argLine + ': ' + JSON.stringify(await eval(`(${argLine})`), null, 2);
+    return ('<< ' + JSON.stringify(await eval(`(${argLine})`), null, 2)).split('\n');
   }
 }
 
