@@ -292,8 +292,6 @@ class Bugfixes extends Emitter {
 
             scores = scoresArray.join(' ');
 
-if (scoresArray[10] == -5) console.log('>>>AAA', scores);
-
             // if (p.hidden && this.$.get(p, 'info2', 't') === '3') {items[i] = ''; ns--;}
 
             // display overridden auth
