@@ -137,10 +137,10 @@ void apiSetPlayerState(int slot, const char *state) {
 }
 
 void apiGetPlayerState(const char *pfx, int client) {
-	char pl_all[65536];
-	char stats[65536];
+	char pl_all[655360];
+	char stats[655360];
 	char *pstats = stats;
-	int i, c = 65536, n = 0;
+	int i, c = 655360, n = 0;
 
 	playerState_t *ps = SV_GameClientNum(client);
 	sharedEntity_t *es = SV_GentityNum(client);
@@ -235,7 +235,7 @@ int hkCmpPlayerState(void *vps1, void *vps2) {
 }
 
 void apiGetEntityStateUp(const char *pfx, int num, void *esv) {
-	char pl_all[65536];
+	char pl_all[655360];
 	unsigned l;
   sharedEntity_t *es = (sharedEntity_t *) esv;
 

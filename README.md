@@ -47,6 +47,7 @@ su urt -s /bin/bash
 ```
 git clone --depth=1 "https://github.com/tarquas/node-urt4.git" ~/node-urt4
 cd ~/node-urt4
+make lib-release
 make run-prepare
 ```
 6) Install and run the services:
