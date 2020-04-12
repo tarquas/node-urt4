@@ -20,12 +20,14 @@ make run
 ```
 This will automatically clone latest code of [Mickael9](https://github.com/mickael9)'s [repository](https://github.com/mickael9/ioq3) to `ioq3` directory and download minified UrT game directory `q3ut4` from [cloud](https://tarquas-urt.storage.googleapis.com/node-urt4/q3ut4-minified.zip) (128 MiB), extract the files, perform build, install NPM packages and locally run of UrT server.
 
-## Example installation as a service on Debian 9
+## Example installation as a service on Debian 10 (Buster)
 Below steps will set up 2 UrT servers: one for shooting modes (on default port) and one for jump mode (on port `1337`).
 1) Prepare APT resources for [MongoDB](https://docs.mongodb.com/manual/tutorial/install-mongodb-on-debian/):
 ```
-sudo apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv 9DA31620334BD75D9DCB49F368818C72E52529D4
-echo "deb http://repo.mongodb.org/apt/debian stretch/mongodb-org/4.2 main" | sudo tee /etc/apt/sources.list.d/mongodb-org-4.0.list
+sudo apt update
+sudo apt -y install gnupg2
+wget -qO - https://www.mongodb.org/static/pgp/server-4.2.asc | sudo apt-key add -
+echo "deb http://repo.mongodb.org/apt/debian buster/mongodb-org/4.2 main" | sudo tee /etc/apt/sources.list.d/mongodb-org-4.2.list
 sudo apt-get update
 ```
 2) Prepare APT resources for [Node.js](https://nodejs.org/en/download/package-manager/#debian-and-ubuntu-based-linux-distributions):
