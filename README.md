@@ -45,7 +45,7 @@ su urt -s /bin/bash
 ```
 5) Clone this repo, compile the binary, and install NPM dependencies:
 ```
-git clone --depth 1 git@github.com:tarquas/node-urt4.git ~/node-urt4
+git clone --depth=1 "https://github.com/tarquas/node-urt4.git" ~/node-urt4
 cd ~/node-urt4
 make run-prepare
 ```
