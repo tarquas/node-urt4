@@ -171,13 +171,13 @@ module.exports = {
       rules: rules.ctf,
 
       mapsAdd: [
-        'ut4_turnpike',
-        'ut4_orbital_sl',
-        'ut4_tohunga_b8',
-        'ut4_algiers',
         'ut4_abbey',
-        'ut4_beijing_b3',
+        'ut4_turnpike',
         'ut4_paris',
+        'ut4_tohunga_b8',
+        'ut4_orbital_sl',
+        'ut4_algiers',
+        'ut4_beijing_b3',
         'ut4_uptown',
         'ut4_kingpin',
         'ut4_village'

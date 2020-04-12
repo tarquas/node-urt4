@@ -15,6 +15,7 @@ class Bugfixes extends Emitter {
     this.sv.on('drop', this.onDrop.bind(this), true);
     this.sv.on('drop', this.onMustDrop.bind(this));
     this.$hits.on('hit', this.onHit.bind(this));
+    this.$hits.on('hitBug', this.onHitBug.bind(this));
 
     this.specUpdateProc = this.specUpdate.bind(this);
     this.specUpdateProc();
@@ -37,13 +38,21 @@ class Bugfixes extends Emitter {
   }
 
   reportSpecialHit(hit, c) {
+    const p = this.$players.clients[c];
+    if (!p) return;
+
     const followers = this.$pos.getFollowers(c);
     if (!followers) return;
 
-    const all = [c, ...followers].filter(c => this.isHitReportFor(hit, c));
+    const testSpecOnly = this.urt4.getBoolean(this.$.get(p, 'prefs', 'testSpecOnly'));
+
+    const all = [...[testSpecOnly ? [] : c], ...followers].filter(c => this.isHitReportFor(hit, c));
     if (!all.length) return;
 
-    const weaponName = this.$hits.$.weaponNames[hit.weapon] || hit.weapon;
+    const weaponName = (
+      !hit.weapon ? '^2Unidentified' :
+      this.$hits.$.weaponNames[hit.weapon] || hit.weapon
+    );
 
     const damage = `for ^6${hit.dmg} hp^3 ${
       hit.explosion ? 'explosion ' : ''
@@ -80,6 +89,10 @@ class Bugfixes extends Emitter {
   async onHit(hit) {
     this.reportSpecialHit(hit, hit.who);
     if (hit.who !== hit.whom) this.reportSpecialHit(hit, hit.whom);
+  }
+
+  async onHitBug(hit) {
+    this.reportSpecialHit(hit, hit.whom);
   }
 
   async specUpdate() {

@@ -26,30 +26,30 @@ class Info extends Cmd {
     this.$.set(player, '$info', 'tipsShown', true);
   }
 
-  async getRule(idArg) {
+  async getRule(id) {
     const mode = await this.urt4.rpc(`com getcvar nodeurt_mode`);
     const modeObj = this.$mod.modes[mode];
     const rules = modeObj.rules;
-    const id = (idArg + '').toLowerCase();
+    if (!id) return rules.desc;
     const rule = rules.rules[id];
     if (!rule) return null;
     return rule;
   }
 
   async rulesCmd({as, args: [idArg, to]}) {
-    const mode = await this.urt4.rpc(`com getcvar nodeurt_mode`);
-    const modeObj = this.$mod.modes[mode];
-    const rules = modeObj.rules;
-    if (!idArg) return rules.desc;
+    if (!idArg) return await this.getRule();
     const id = (idArg + '').toLowerCase();
-    const rule = rules.rules[id];
+    const rule = await this.getRule(id);
     if (!rule) return `^1Error ^3Rule ^2${id}^3 is not found`;
 
     if (to) {
       if (as.level < this.admin.$.levels.mod) return this.admin.$.cmdErrors.access;
       const p = this.$players.find(to, as, true);
-      this.$players.chat(null, `^2Moderator^3 paid attention of ^5${this.$players.name(p)}^3 to rule ^2${id}^3:`);
+      this.$players.chat(p, `\n\n^5Please be advised that repeating violation of rules result in kick or ban`);
+      this.$players.chat(p, `^1-------- RULE DESCRIPTION --------`);
       this.$players.chat(p, rule);
+      this.$players.chat(p, `^1Warning ^2Please open console and attentively read above`);
+      this.$players.chat(null, `^2Moderator^3 paid attention of ^5${this.$players.name(p)}^3 to rule ^2${id}^3`);
       return `^3Rule ^5${id}^3 has been sent to ${this.$players.name(p)}`;
     }
 
@@ -58,6 +58,10 @@ class Info extends Cmd {
 
   async ['ANY+ rules : List rules of this server'](arg) { return this.rulesCmd(arg); }
   async ['ANY+ rule <#> [<to>]: Show details for rule # (to player <to> or self)'](arg) { return this.rulesCmd(arg); }
+
+  async ['MOD+ warn <to> <#>: Send rule # to player']({args: [to, num], ...rest}) {
+    return this.rulesCmd({args: [num, to], ...rest});
+  }
 }
 
 module.exports = Info;

@@ -8,6 +8,7 @@ class Users extends Db.Mongo.Model {
       name: [String],
       auth: [String],
       pwd: String,
+      pwdOne: Boolean,
       guid: [String],
       ip: [String],
       ipStat: this.Schema.Types.Mixed, // {[ip]: {nConns, pingSum, last}}
@@ -15,6 +16,7 @@ class Users extends Db.Mongo.Model {
       lastIp: String,
       bans: [String],
       password: [String],
+      discordUserId: String,
       settings: this.Schema.Types.Mixed
     }, {
       collection: 'users'
@@ -23,6 +25,8 @@ class Users extends Db.Mongo.Model {
       .index({name: 1})
       .index({auth: 1})
       .index({ip: 1})
+      .index({discordUserId: 1})
+    ;
   }
 
   getIpQuery(ip) {

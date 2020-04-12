@@ -10,6 +10,7 @@ const Follow = require('./follow');
 const FunPak = require('./fun-pak');
 const Hits = require('./hits');
 const Hitpoints = require('./hitpoints');
+const HitpointsCtf = require('./hitpoints-ctf');
 const Menu = require('./menu');
 const Mod = require('./mod');
 const Party = require('./party-ctf');
@@ -40,9 +41,10 @@ class Admin extends $ {
       $funPak: FunPak.new(cfg),
       $hits: Hits.new(cfg),
       $hitpoints: Hitpoints.new(cfg),
+      $hitpointsCtf: HitpointsCtf.new(cfg),
       $menu: Menu.new(cfg),
       $mod: Mod.new(cfg),
-      $party: Party.new(cfg),
+      //$party: Party.new(cfg),
       $players: Players.new(cfg),
       $pos: Pos.new(cfg),
       $punish: Punish.new(cfg),
@@ -131,6 +133,7 @@ Admin.cmdErrors = {
 
 Admin.levels = {
   any: 0,
+  lamer: 5,
   user: 10,
   tmod: 20,
   mod: 30,
@@ -143,6 +146,7 @@ Admin.levelIds = Admin.invert(Admin.levels);
 
 Admin.levelNames = {
   any: '^3a guest',
+  lamer: '^9known lamer',
   user: '^5known player',
   tmod: '^4temporary moderator',
   mod: '^2a moderator',

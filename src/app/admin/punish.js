@@ -46,6 +46,8 @@ class Punish extends Cmd {
     const now = +new Date();
     const msec = this.$.msecSpamMute;
 
+    if (this.$.get(p, 'punish', 'mute', 'until') > now) return;
+
     const mute = {
       since: now,
       until: now + msec,
@@ -99,7 +101,7 @@ class Punish extends Cmd {
 
       return `${this.$players.name(p)} ^3is banned for ^5${
         this.urt4.showTimeSpan(cur.until - now)
-      }^3. Reason: ^2${cur.reason}`;
+      }^3. Reason: ^2${await this.$players.wrapReason(cur.reason, true)}`;
     }
 
     if (cur) {
@@ -133,7 +135,9 @@ class Punish extends Cmd {
       };
 
       await this.$players.set(p, {'punish.ban': ban});
-      this.$players.chat(null, `${this.$players.name(p)} ^3has been banned ^5permanently^3. Reason: ^2${reason}`);
+
+      this.$players.chat(null,
+        `${this.$players.name(p)} ^3has been banned ^5permanently^3. Reason: ^2${await this.$players.wrapReason(reason, true)}`);
     } else {
       const msec = this.urt4.getTimeSpan(time);
 
@@ -156,14 +160,14 @@ class Punish extends Cmd {
 
       this.$players.chat(null, `${this.$players.name(p)} ^3has been banned for ^5${
         this.urt4.showTimeSpan(msec)
-      }^3. Reason: ^2${reason}`);
+      }^3. Reason: ^2${await this.$players.wrapReason(reason, true)}`);
     }
 
     blames.push(null);
 
     if (!p.dropped) {
       p.banned = ban;
-      this.$players.kick(p, this.$players.banReason(ban));
+      this.$players.kick(p, await this.$players.banReason(ban), await this.$players.banReason(ban, true));
     }
   }
 
@@ -310,9 +314,10 @@ class Punish extends Cmd {
     return `^3You have just slapped ${this.$players.name(p)}`;
   }
 
-  async ['ANY slot <player>: Take slot of unauthorized player']({as, blames, args: [player]}) {
+  async ['ANY slot <player>: Take slot of unauthorized or lower role player']({as, blames, args: [player]}) {
     if (!player) return this.admin.$.cmdErrors.help;
-    if (!as.auth) return `^1Error ^3You have no auth`;
+    if (!as.auth) return `^1Error ^3Only authorized players may use this command`;
+    if (as.level === this.admin.$.levels.lamer) return `^1Error ^3Lamers can't use this command`;
 
     if (this.$.get(as, 'sets', 'player', 'teamDenyAll')) {
       return `^1Error ^3You are not allowed to ^2choose a team^3`;
@@ -327,7 +332,9 @@ class Punish extends Cmd {
       return `^1Error ^3Player ${this.$players.name(p)} is not playing`;
     }
 
-    if (p.auth) return `^1Error ^3Player ${this.$players.name(p)} is authorized: ^2${p.auth}`;
+    if (p.auth && p.level !== this.admin.$.levels.lamer && !(as.level > p.level)) {
+      return `^1Error ^3You may not take slot of player ${this.$players.name(p)} (auth: ^2${p.auth})`;
+    }
 
     await this.$players.forceTeam(p, this.$players.$.teamNames[this.$.get(as, 'info2', 't')]);
     await this.$players.forceTeam(as, this.$players.$.teamNames[team]);
@@ -395,8 +402,13 @@ class Punish extends Cmd {
 
       blames.push(null);
 
-      this.$players.kick(p, reason);
-      this.$players.chat(null, `^3Player ${whom}^3 has been ^2kicked`);
+      const wrappedShort = await this.$players.wrapReason(reason, true);
+      const wrapped = await this.$players.wrapReason(reason);
+      this.$players.kick(p, wrapped, wrappedShort);
+
+      this.$players.chat(null, `^3Player ${whom}^3 has been ^2kicked${
+        reason ? `^3for reason: ${wrappedShort}` :
+      ''}`);
     })();
   }
 

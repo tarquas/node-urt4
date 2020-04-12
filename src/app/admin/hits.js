@@ -9,13 +9,13 @@ class Hits extends Cmd {
 
     this.frame = 0;
 
-    this.victims = {};
-    this.explosions = {};
-    this.prevExplosions = {};
-    this.healthsAfterDmg = {};
-    this.lastAttack = {};
-    this.flags = {};
-    this.hitProjectiles = {};
+    this.victims = this.$.make();
+    this.explosions = this.$.make();
+    this.prevExplosions = this.$.make();
+    this.healthsAfterDmg = this.$.make();
+    this.lastAttack = this.$.make();
+    this.flags = this.$.make();
+    this.hitProjectiles = this.$.make();
 
     this.sv.on('frame', this.onFrame.bind(this));
     this.$pos.on('ent', this.onEnt.bind(this));
@@ -27,21 +27,32 @@ class Hits extends Cmd {
     this.$qvm.on('kill', this.onKill.bind(this));
   }
 
-  async onFrame() {
-    this.frame++;
+  static inRange(v, a, b) {
+    return v >= a && v < b;
+  }
 
+  async onFrame() {
     if (this.$.hasKeys(this.victims)) {  // somebody injured
-      const prevExps = Object.entries(this.prevExplosions);
-      const curExps = Object.entries(this.explosions);
+      const allExps = [];
+
+      for (const [k, v] of Object.entries(this.explosions)) {
+        if (!this.$.inRange(this.frame - v.frame, 0, this.$.explosionFrameAcc)) delete this.explosions[k];
+        allExps.push([k, v]);
+      }
+
+      const prevExps = allExps.filter(([k, v]) => v.frame === this.frame - 1);
+      const curExps = allExps.filter(([k, v]) => v.frame === this.frame);
+
       const hitProjs = Object.entries(this.hitProjectiles);
+      const now = +new Date();
 
       for (const [id, {hp, ps, prevHp, evt}] of Object.entries(this.victims)) {
-        if (!ps) return;
+        if (!ps) continue;
         const pent = this.$pos.ent[id];
-        const exps = evt === 17 ? prevExps : curExps;
         const [X1, Y1, Z1] = ps.pos;
         const dmg = prevHp - hp;
         let explCandidates = [];
+        const exps = evt == 17 ? prevExps : curExps;
 
         for (const [eid, {pos, weapon, owner}] of exps) {  // check explosions
           const [X2, Y2, Z2] = pos;
@@ -49,7 +60,7 @@ class Hits extends Cmd {
           const dist = Math.sqrt(X*X + Y*Y + Z*Z);
           const radius = this.$.nadeRadius[weapon];
           if (!radius || dist > radius) continue;
-          const attack = {who: owner, weapon, explosion: true, dist, radius, special: true};
+          const attack = {who: owner, weapon, explosion: true, dist, radius, special: true, at: now};
           explCandidates.push(attack);
         }
 
@@ -94,7 +105,7 @@ class Hits extends Cmd {
               const hit = this.inBounds(bounds, epos);
               //console.log('toss projectile:', radius, this.diffPosAbs(bounds.pos, epos), bounds, epos, hit);
               if (!hit) continue;
-              this.lastAttack[id] = {who: owner, weapon, special: true};
+              this.lastAttack[id] = {who: owner, weapon, special: true, at: now};
               break;
             }
           }
@@ -104,6 +115,7 @@ class Hits extends Cmd {
 
         if (!attack) {
           this.$.logError('Unidentified attack!');
+          await this.emit('hitBug', {whom: id | 0, prevHp, hp, dmg});
           continue;
         }
 
@@ -112,15 +124,10 @@ class Hits extends Cmd {
         attack.bleed = true; // subsequent hit events within same attack is bleeding
       }
 
-      this.victims = {};
+      this.victims = this.$.make();
     }
 
-    if (this.$.hasKeys(this.explosions)) {
-      this.prevExplosions = this.explosions;
-      this.explosions = {};
-    } else if (this.$.hasKeys(this.prevExplosions)) {
-      this.prevExplosions = {};
-    }
+    this.frame++;
   }
 
   getEntBounds(ent, radius) {  // get entity bounding box
@@ -166,6 +173,8 @@ class Hits extends Cmd {
   async onEnt({id, prev, cur, diff}) {
     // if (diff && diff.event && id == 5) console.log(this.frame, id, diff);
 
+    // TODO: healing
+
     if (!prev && cur.type[0] === 2 && cur.model[1] === 1 && cur.model[0] in this.$.ctfFlags) { // flag dropped
       const team = cur.model[0];
       let flag = this.flags[team];
@@ -206,7 +215,9 @@ class Hits extends Cmd {
       if (owner < 0) {  // explosions from flags have no owner info
         for (const [team, flag] of Object.entries(this.flags)) {
           if (flag.ent < 64) {  // player holds
-            const i = this.insideEnt(this.$pos.ps[flag.ent], cur.pos);
+            const flagEnt = this.$pos.ps[flag.ent];
+            if (!flagEnt) continue;
+            const i = this.insideEnt(flagEnt, cur.pos);
             if (!i) continue;
           } else {  // if dropped
             let {pos} = flag;  // flag position before elimination
@@ -232,59 +243,41 @@ class Hits extends Cmd {
 
       if (owner < 0) weapon = -4;  // if still no owner, assume it's admin's nuke
 
-      this.explosions[id] = {pos, weapon, owner};
+      this.explosions[id] = {pos, weapon, owner, frame: this.frame};
       // console.log('exp', this.frame);
       return;
     }
 
-    let hp = this.$.get(this.$pos.ps, id, 'stats', 6);
+    const weapon = this.$.worldHitByEvt[evt];
 
-    switch (evt) {
-      case 17: hp = 0;  // dead
-      case 16: {
-        /*const last = this.lastAttack[id];
+    const now = +new Date();
 
-        if (!last || last.bleed) {  // if no fresh attack, check toss from projectile
-          for (const [eid, {radius, weapon, owner}] of Object.entries(this.hitProjectiles)) {
-            const ent = this.$pos.ent[eid];
-            if (!ent) continue;
-            const epos = ent.tpos.slice(3, 6);
-            const bounds = this.getEntBounds(cur, radius);
-            const hit = this.inBounds(bounds, epos);
-            console.log('toss projectile:', radius, this.diffPosAbs(bounds.pos, epos), bounds, epos, hit);
-            if (!hit) continue;
-            this.lastAttack[id] = {who: owner, weapon, special: true};
-          }
-        }*/
-      } break  // wounded
+    let hp;
+    let last = this.lastAttack[id];
 
-      case 59: {
-        if (!this.lastAttack[id]) this.lastAttack[id] = {who: id, weapon: -6, world: true, special: true};
-      } break;  // water drowning
+    if (evt == 17) {
+      hp = 0; // died
+    } else {
+      hp = this.$.get(this.$pos.ps, id, 'stats', 6);
 
-      case 49: {
-        if (!this.lastAttack[id]) this.lastAttack[id] = {who: id, weapon: -5, world: true, special: true};
-      } break;  // fell
-
-      case 99: {  // unidentified injury after jumping is assumed as falling
-        if (!this.lastAttack[id]) this.lastAttack[id] = {who: id, weapon: -5, world: true, special: true};
-      } break;
-
-      default: hp = null;  // other events are not related to injury
+      if (weapon) {
+        if (!last || now - last.at > this.$.bleedTimeoutMsec) {
+          this.lastAttack[id] = last = {who: id, weapon, world: true, special: true, at: now};
+        }
+      }
     }
 
     // TODO: HK-69 nade hit; Slap; Fall with jump held -- currently they are credited to last attacker of falling
 
-    if (hp != null) {
-      const prevHp = this.healthsAfterDmg[id];
-      if (prevHp === hp) return; // no injury if hp is the same
+    if (!last) return;
 
-      // somebody injured
-      this.healthsAfterDmg[id] = hp;
-      this.victims[id] = {prevHp, hp, ps: this.$pos.ps[id], evt};
-      // console.log('dmg', this.frame);
-      return;
-    }
+    const prevHp = this.healthsAfterDmg[id];
+    if (prevHp === hp) return; // no injury if hp is the same
+
+    // somebody injured
+    this.healthsAfterDmg[id] = hp;
+    this.victims[id] = {prevHp, hp, ps: this.$pos.ps[id], evt};
+    last.at = now;
   }
 
   async onPs({id, prev, cur, diff}) {
@@ -309,31 +302,43 @@ class Hits extends Cmd {
   async onItem({client, item}) {
     if (!(item in this.$.ctfFlags)) return;
     this.flags[item] = {owner: client, ent: client}; // flag taken
+    await this.emit('flag', {client, team: item, action: this.$.ctfFlagActions.take});
   }
 
   async onFlag({client, event, item}) {
     if (event === 0 && !this.flags[item]) { // flag dropped after mod restarted while flag held
       this.flags[item] = {owner: client};
     }
+
+    await this.emit('flag', {client, team: item, action: event});
   }
 
   async onHit({who, whom, body, weapon}) { // standard hit
-    this.lastAttack[whom] = {who, weapon};
+    const now = +new Date();
+    this.lastAttack[whom] = {who, weapon, at: now};
   }
 
   async onKill({who, whom, mod}) {
-    const weapon = this.$.modWeapons[mod];
-    if (!weapon) return;
+    //console.log(`>>> ${who} [${mod}] ${whom}`);
+    const hit = this.$.modHits[mod];
+    if (!hit) return;
 
     // special hits, caused deaths
     if (who === 1022) who = whom; // kill by world means self kill
+    const now = +new Date();
 
     this.lastAttack[whom] = {
-      who, weapon,
-      world: this.$.worldWeapons[weapon], special: true
+      at: now,
+      who,
+      world: this.$.worldWeapons[hit.weapon],
+      special: true,
+      ...hit,
     };
   }
 }
+
+Hits.bleedTimeoutMsec = 4000;
+Hits.explosionFrameAcc = 3;
 
 Hits.entPlayer = {
   weapon: 1
@@ -391,11 +396,16 @@ Hits.weaponNames = {
   30: 'Flying knife',
 };
 
-Hits.modWeapons = {
-  1: -6,
-  6: -5,
-  7: -7,
-  48: -8,
+Hits.modHits = {
+  1: {weapon: -6},
+  6: {weapon: -5},
+  7: {weapon: -7},
+  48: {weapon: -8},
+  31: {weapon: 11, explosion: true}, // HE self exploded
+  25: {weapon: 11, explosion: true}, // HE nade explode
+  37: {weapon: 7}, // HK nade hit
+  22: {weapon: 7, explosion: true}, // HK nade explode
+  // : {weapon: 16, exploson: true}, // Bomb explode
 };
 
 Hits.worldWeapons = {
@@ -408,8 +418,21 @@ Hits.ctfFlags = {
   2: 'blue'
 };
 
+Hits.ctfFlagActions = {
+  take: -1,
+  drop: 0,
+  return: 1,
+  capture: 2,
+};
+
 Hits.hitProjectiles = {
   7: 30
+};
+
+Hits.worldHitByEvt = {
+  59: -6, // water drowning
+  49: -5, // fell
+  99: -5, // unidentified injury after jumping is assumed as falling
 };
 
 module.exports = Hits;

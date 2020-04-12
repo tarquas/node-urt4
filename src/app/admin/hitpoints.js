@@ -13,11 +13,53 @@ class Hitpoints extends Cmd {
     this.$players.on('scores', this.onScores.bind(this));
   }
 
-  onGame() {
+  static makeHitstats() {
+    return {
+      kills: 0,
+      deaths: 0,
+      assists: 0,
+    };
+  }
+
+  resetHitpoints(player) {
+    const now = +new Date();
+
+    player.hitpoints = {
+      spawnedAt: now,
+      enemyHits: this.$.make(),
+      allyHits: this.$.make(),
+      damaged: 0
+    };
+  }
+
+  resetHitstats(player) {
+    if (player) {
+      player.hitstats = this.$.makeHitstats();
+      return;
+    }
+
     for (const [c, p] of Object.entries(this.$players.clients)) {
-      p.hitstats = {kills: 0, deaths: 0, assists: 0};
+      p.hitstats = this.$.makeHitstats();
       delete p.hitpoints;
     }
+  }
+
+  onGame() {
+    this.resetHitstats();
+  }
+
+  async onTeam({player, teamId}) {
+    if (teamId === 'spec') {
+      delete player.hitpoints;
+      player.active = false;
+      player.spectator = true;
+      return;
+    }
+
+    player.spectator = false;
+    this.resetHitpoints(player);
+    if (player.hitstats) return;
+    this.resetHitstats(player);
   }
 
   onScores({player, client, viewerPlayer, viewerClient, scores}) {
@@ -57,74 +99,80 @@ class Hitpoints extends Cmd {
     this.$players.chat(all, text);
   }
 
-  async onTeam({client, player: p}) {
-    const now = +new Date();
-
-    p.hitpoints = {
-      spawnedAt: now,
-      enemyHits: this.$.make(),
-      allyHits: this.$.make(),
-      damaged: 0
-    };
-
-    if (!p.hitstats) p.hitstats = {
-      kills: 0,
-      deaths: 0,
-      assists: 0,
-    };
-  }
-
   async onSpawn({client}) {
     const p = this.$players.clients[client];
     if (!p) return;
 
     const whomName = `^5${this.$players.name(p)}`;
 
+    p.active = true;
+    const now = +new Date();
+
     const hpt = p.hitpoints;
 
     if (hpt && hpt.diedAt) {
-      const now = +new Date();
-      const roundTime = now - hpt.spawnedAt;
-      const deadTime = now - hpt.diedAt;
-      const deadRatio = deadTime / roundTime;
-      const aliveRatio = 1 - deadRatio;
-      const deadFactor = deadRatio / hpt.damaged;
-      const aliveFactor = aliveRatio / hpt.damaged;
+      const ro = {};
 
-      const {gametype} = this.$mod;
+      ro.now = now;
+      ro.roundTime = ro.now - hpt.spawnedAt;
+      ro.deadTime = ro.now - hpt.diedAt;
+      ro.deadRatio = ro.deadTime / ro.roundTime;
+      ro.aliveRatio = 1 - ro.deadRatio;
+      ro.deadFactor = ro.deadRatio / hpt.damaged;
+      ro.aliveFactor = ro.aliveRatio / hpt.damaged;
 
-      let allyTimePivot = this.$.allyTimePivots[gametype];
-      if (allyTimePivot == null) allyTimePivot = this.$.allyTimePivots.default;
+      ro.gametype = this.$mod.gametype;
 
-      let killerBonus = this.$.killerBonuses[gametype];
-      if (killerBonus == null) killerBonus = this.$.killerBonuses.default;
+      ro.allyTimePivot = this.$.allyTimePivot;
+      ro.killerBonus = this.$.killerBonus;
+      ro.allyBonus = this.$.allyBonus;
+
+      const roEvt = `roundOptions${ro.gametype}`;
+      const koEvt = `killpointOptions${ro.gametype}`;
+
+      {
+        const e = this.emit(roEvt, {ro, whom: p});
+        if (e && e.then) await e;
+      }
 
       for (const [c, dmg] of Object.entries(hpt.enemyHits)) {
-        const killpoints = (deadFactor * dmg) * (hpt.killer == c ? killerBonus : 1);
-
-        const kp = `^${killpoints < 0 ? 1 : 2}${killpoints.toFixed(3)}^3 killpoints`;
         const P = this.$players.clients[c];
-        if (!P || !P.hitpoints) continue;
+        if (!P || !P.hitpoints || !P.hitstats) continue;
 
-        P.hitstats.kills += killpoints;
-        p.hitstats.deaths += killpoints;
+        const ko = {};
 
+        ko.killpoints = (ro.deadFactor * dmg) * (hpt.killer == c ? ro.killerBonus : 1);
+
+        const e = this.emit(koEvt, {ro, ko, dmg, who: P, whom: p, ally: false});
+        if (e && e.then) await e;
+
+        P.hitstats.kills += ko.killpoints;
+        p.hitstats.deaths += ko.killpoints;
+
+        const kp = `^${ko.killpoints < 0 ? 1 : 2}${ko.killpoints.toFixed(3)}^3 killpoints`;
         this.reportKillpoints(P, `^3You've got ${kp} for enemy ${whomName}`);
         this.reportKillpoints(p, `^5${this.$players.name(P)} got ${kp} for ^5you`);
       }
 
       for (const [c, dmg] of Object.entries(hpt.allyHits)) {
-        const killpoints = (
-          (aliveRatio - aliveFactor * allyTimePivot * dmg - allyTimePivot) *
-          (hpt.killer == c ? killerBonus : 1)
+        const P = this.$players.clients[c];
+        if (!P || !P.hitpoints || !P.hitstats) continue;
+
+        const ko = {};
+
+        ko.killpoints = (
+          (ro.aliveRatio - ro.aliveFactor * ro.allyTimePivot * dmg - ro.allyTimePivot) *
+          (hpt.killer == c ? ro.killerBonus : 1) *
+          ro.allyBonus 
         );
 
-        const kp = `^${killpoints < 0 ? 1 : 2}${killpoints.toFixed(3)}^3 killpoints`;
-        const P = this.$players.clients[c];
-        if (!P || !P.hitpoints) continue;
+        const e = this.emit(roEvt, {ro, ko, dmg, who: P, whom: p, ally: true});
+        if (e && e.then) await e;
 
-        P.hitstats.kills += killpoints;
-        P.hitstats.assists += killpoints;
+        P.hitstats.kills += ko.killpoints;
+        P.hitstats.assists += ko.killpoints;
+
+        const kp = `^${ko.killpoints < 0 ? 1 : 2}${ko.killpoints.toFixed(3)}^3 killpoints`;
 
         if (p === P) {
           this.reportKillpoints(p, `^5You've^3 got ${kp} for ^1suicide`);
@@ -136,7 +184,7 @@ class Hitpoints extends Cmd {
       }
     }
 
-    await this.onTeam({client, player: p});
+    await this.onTeam({player: p});
   }
 
   async onHit({who, whom, dmg, hp}) {
@@ -157,21 +205,17 @@ class Hitpoints extends Cmd {
 
     hpt.damaged += dmg;
 
-    if (!hp) {
-      hpt.killer = who;
-      hpt.diedAt = +new Date();
-    }
+    if (hp) return;
+
+    hpt.killer = who;
+    hpt.diedAt = +new Date();
+    p.active = false;
   }
 }
 
-Hitpoints.allyTimePivots = {
-  default: 1,
-  7: 0.5
-};
-
-Hitpoints.killerBonuses = {
-  default: 2
-};
+Hitpoints.allyTimePivot = 1;
+Hitpoints.killerBonus = 2;
+Hitpoints.allyBonus = 2;
 
 Hitpoints.scores = {
   kills: 0,

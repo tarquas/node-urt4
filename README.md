@@ -25,11 +25,12 @@ Below steps will set up 2 UrT servers: one for shooting modes (on default port) 
 1) Prepare APT resources for [MongoDB](https://docs.mongodb.com/manual/tutorial/install-mongodb-on-debian/):
 ```
 sudo apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv 9DA31620334BD75D9DCB49F368818C72E52529D4
-echo "deb http://repo.mongodb.org/apt/debian stretch/mongodb-org/4.0 main" | sudo tee /etc/apt/sources.list.d/mongodb-org-4.0.listsudo apt-get update
+echo "deb http://repo.mongodb.org/apt/debian stretch/mongodb-org/4.2 main" | sudo tee /etc/apt/sources.list.d/mongodb-org-4.0.list
+sudo apt-get update
 ```
 2) Prepare APT resources for [Node.js](https://nodejs.org/en/download/package-manager/#debian-and-ubuntu-based-linux-distributions):
 ```
-wget -qO- https://deb.nodesource.com/setup_8.x | sudo -E bash -
+wget -qO- https://deb.nodesource.com/setup_12.x | sudo -E bash -
 ```
 3) Install dependencies:
 ```
@@ -58,8 +59,8 @@ service urt-engine-jump start
 ```
 Consoles of service processes are available via `screen`:
 * for a mod: `screen -D -RR urt-mod`
-* for UrT server: `screen -D -RR urt-engine`
-* for UrT jump server: `screen -D -RR urt-mod`
+* for UrT server: `screen -D -RR urt-engine-guns`
+* for UrT jump server: `screen -D -RR urt-engine-jump`
 7) Run the game and connect to your server. Go to mod console:
 ```
 screen -D -RR urt-mod

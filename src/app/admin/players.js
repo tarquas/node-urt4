@@ -79,24 +79,34 @@ class Players extends Cmd {
     await this.$db.$users.update(player, settings, o);
   }
 
-  kick(player, reason) {
+  async wrapReason(reason, short) {
+    const rule = +reason;
+    if (!rule) return reason;
+    const ruleArr = await this.admin.$info.getRule(rule);
+    if (!ruleArr) return reason;
+    const ruleText = short ? ruleArr[0] : ruleArr.join('\n');
+    return ruleText;
+  }
+
+  kick(player, reason, short) {
     const c = player.client;
     const r = this.text(reason);
+    const s = short ? this.text(short) : r;
 
     this.urt4.cmds([
       `sv svcmd ${c} disconnect ${r}`, 
-      `com in kick ${c} ${r}`
+      `com in kick ${c} ${s}`
     ]);
 
-    player.dropped = {reason: 'kicked', message: reason, at: new Date()};
+    player.dropped = {reason: 'kicked', message: short || reason, at: new Date()};
   }
 
-  banReason(ban) {
+  async banReason(ban, short) {
     const now = +new Date();
 
     const s = `^1Banned ${ban.permanent ? 'permanently' : `for ^2${
       this.urt4.showTimeSpan(ban.until - now)
-    }`}^7: ${ban.reason}`;
+    }`}^7: ${await this.wrapReason(ban.reason, short)}`;
 
     return s;
   }
@@ -105,7 +115,7 @@ class Players extends Cmd {
     const player = this.clients[client];
     if (!player) return;
     const ban = player.banned;
-    if (ban) this.kick(player, this.banReason(ban));
+    if (ban) this.kick(player, await this.banReason(ban), await this.banReason(ban, true));
   }
 
   async onAuth(info, pwd) {
@@ -421,8 +431,8 @@ class Players extends Cmd {
 
   name(player) {
     const p = typeof player === 'object' ? player : this.clients[player];
-    if (!p || !p.info) return `^6Server Admin`;
-    return `^5${p.info.name}^2#${p.client}^3`;
+    if (!p || !p.info) return `^8Big Brother ^9E-[`;
+    return `^5${p.info.name}^9#${p.client}^3`;
   }
 
   ncname(player) {
@@ -568,8 +578,18 @@ class Players extends Cmd {
     const player = this.clients[client];
     if (!player || player.dropped) return;
 
-    if (player.auth && cmd === 'print "g_maxGameClients has been reached, you cannot join"') {
-      this.chat(player, '^2Tip:^3 You may take slot of any unauthed player by using ^5!slot^3 command.');
+    if (cmd === 'print "g_maxGameClients has been reached, you cannot join"') {
+      if (player.auth) {
+        this.chat(player, [
+          '^2Tip:^3 You may take slot of any player without auth or lower role',
+          ' by using ^5!slot^3 command.'
+        ]);
+      } else {
+        this.chat(player, [
+          '^2Tip:^3 Please rejoin with your ^5auth^3 to be allowed to take slots of other players',
+          ' by using ^5!slot^3 command.'
+        ]);
+      }
     }
 
     if (this.urt4.act) this.urt4.log(`${this.ncname(player)} < ${cmd}`);
@@ -642,6 +662,15 @@ class Players extends Cmd {
     }
   }
 
+  isTester(p, inSpec) {
+    if (!p) return null;
+    const P = p.prefs;
+    if (!P) return false;
+    if (!inSpec && P.testSpecOnly && this.$.get(p, 'info2', 't') !== '3') return false;
+    if (P.specialHits || P.prettyHits || P.testKillpoints || P.testSpecOnly || P.testHitstats) return true;
+    return false;
+  }
+
   async forceTeam(player, teamId) {
     const nok = await this.emit('team', {client: player.client, player, teamId});
     if (!nok) this.urt4.cmd(`com in forceteam ${player.client} ${teamId}`);
@@ -670,9 +699,13 @@ class Players extends Cmd {
         switch (ents.length) {
           case 1: auth = `${levelColor}${ents[0]}`; break;
           case 3: auth = `${levelColor}${ents[2]}`; break;
-          case 5: auth = `^7${ents[2]}${levelColor}${ents[4]}`; break;
+          case 5: auth = `^${ents[1] == 4 ? 2 : 7}${ents[2]}${levelColor}${ents[4]}`; break;
+          case 7: auth = `^2${ents[2]}^7${ents[4]}${levelColor}${ents[6]}`; break;
         }
       }
+
+      const tester = this.isTester(p);
+      auth = `${p.donator ? '^2$' : ''}${tester ? '^2*' : ''}${auth}`;
     }
 
     if (!this.urt4.getBoolean(this.$.get(player, 'prefs', 'noAuthGeo'))) {
@@ -874,7 +907,15 @@ class Players extends Cmd {
     for (const player of found) {
       if (dropped != null && (!dropped ^ !player.dropped)) continue;
       const levelName = this.levelName(player.level);
-      this.chat(as.client, `^5${player.client} ^7${this.findResult(player)} ^2${levelName}`);
+      const tester = this.isTester(player, true);
+
+      this.chat(as.client, `^5${player.client} ` +
+        `^7${this.findResult(player)} ` +
+        `^2${levelName}` +
+        `${player.donator ? ' ^2$donator' : ''}` +
+        `${tester ? ' ^2*tester' : ''}`
+      );
+
       const geoip = this.geoip[player.ip] || {country_name: 'Unknown location'};
 
       const geoipStr = [

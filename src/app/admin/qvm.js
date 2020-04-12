@@ -60,6 +60,9 @@ class Qvm extends Emitter {
   async pfx_Flag(s) {
     const f = s.match(this.$.rxFlag);
     if (f) return this.emit('flag', {client: f[1] | 0, event: f[2] | 0, item: f[3]});
+
+    const r = s.match(this.$.rxFlagReturn);
+    if (r) return this.emit('flag', {client: -1, event: 1, item: this.$.flagReturn[r[1]]});
   }
 
   async ['pfx_Hit:'](s) {
@@ -114,6 +117,11 @@ class Qvm extends Emitter {
   }
 }
 
+Qvm.flagReturn = {
+  RED: 1,
+  BLUE: 2,
+};
+
 Qvm.rxDigit = /^\d/;
 
 Qvm.rxArenas = /^(\d+) arenas parsed\n/;
@@ -127,6 +135,7 @@ Qvm.rxClientUserinfoChanged = /^ClientUserinfoChanged: (\d+) ([\S\s]*)\n$/;
 Qvm.rxClientSpawn = /^ClientSpawn: (\d+)\n/;
 Qvm.sExitTimelimit = 'Exit: Timelimit hit.\n';
 Qvm.rxFlag = /^Flag: (\d+) (\d+): (\w+)/;
+Qvm.rxFlagReturn = /^Flag Return: (\w+)/;
 Qvm.rxHit = /^Hit: (\d+) (\d+) (\d+) (\d+):/
 Qvm.sHotpotato = 'Hotpotato:\n';
 Qvm.rxItemPick = /^Item: (\d+) (\w+)/;

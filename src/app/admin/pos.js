@@ -6,7 +6,7 @@ class Pos extends Cmd {
 
     await deps({
       ...this.$.pick(this.urt4, 'sv'),
-      ...this.$.pick(this.admin, '$players', '$mod', '$qvm')
+      ...this.$.pick(this.admin, '$players', '$mod', '$qvm', '$inv')
     });
 
     this.ent = {};
@@ -68,8 +68,8 @@ class Pos extends Cmd {
 
     if (
       !s ||
-      (type === 'ent' && (!s || !s.link || !s.link[0])) ||
-      (type === 'ps' && (!s || !s.player || !s.player[3]))
+      (type === 'ent' && (!s.link || !s.link[0])) ||
+      (type === 'ps' && (!s.player || !s.player[3]))
     ) {
       if (p) {
         delete ex[id];
@@ -80,6 +80,22 @@ class Pos extends Cmd {
     }
 
     ex[id] = s;
+
+    if (s.items) {
+      s.itemInfo = [];
+
+      for (const item of s.items) {
+        s.itemInfo[item & 255] = item >> 8;
+      }
+    }
+
+    if (s.weapons) {
+      s.weaponInfo = [];
+
+      for (const weapon of s.weapons) {
+        s.weaponInfo[weapon & 255] = weapon >> 8;
+      }
+    }
 
     if (!p) {
       this.emit(type, {id, prev: null, cur: s});
