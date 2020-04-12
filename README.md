@@ -41,7 +41,7 @@ sudo apt-get install build-essential gcc git libcap2-bin make mongodb-org nodejs
 4) Add user `urt` and run `bash` from this user:
 ```
 useradd -m urt
-su urt -c bash
+su urt -s /bin/bash
 ```
 5) Clone this repo, compile the binary, and install NPM dependencies:
 ```
