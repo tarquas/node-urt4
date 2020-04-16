@@ -26,7 +26,7 @@ class Info extends Emitter {
     const {client} = this.$discordBot;
     if (!client) return;
 
-    const channel = client.channels.get(chanId);
+    const channel = await client.channels.fetch(chanId);
     if (!channel) return;
 
     const info = await this.getServerInfo();
