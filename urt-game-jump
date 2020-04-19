@@ -1,6 +1,6 @@
 #!/bin/bash -i
 
-PIDFILE=/tmp/urt-engine-jump.pid
+PIDFILE=/tmp/urt-game-jump.pid
 
 while [ true ]; do
   if [ -f $PIDFILE ]; then

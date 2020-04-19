@@ -1,0 +1,16 @@
+#!/bin/sh
+NAME="URT guns game"
+DIR=/home/urt/node-urt4
+USER=urt
+SCRIPT=urt-game-guns
+
+### BEGIN INIT INFO
+# Provides:          urt-game-guns
+# Required-Start:    $all
+# Required-Stop:
+# Default-Start:     2 3 4 5
+# Default-Stop:
+# Short-Description: Starts URT guns game.
+### END INIT INFO
+
+. "$DIR/urt-service"

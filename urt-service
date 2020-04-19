@@ -1,0 +1,59 @@
+#!/bin/sh
+
+if [ ! "$SCRIPT" ]; then
+  exit 1;
+fi
+
+PIDFILE=/tmp/$SCRIPT.pid
+SCREEN=$SCRIPT
+
+start() {
+  if [ -f $PIDFILE ]; then
+    echo "Service $NAME already running"
+    exit 1
+  else
+    echo -n "Starting $NAME... "
+    su "$USER" -s /bin/bash -c "
+      screen -dmS $SCREEN \"$DIR/$SCRIPT\" && \
+      screen -S $SCREEN -X multiuser on && \
+      screen -S $SCREEN -X acladd root
+    " && echo "OK"
+  fi
+}
+stop() {
+  if [ -f $PIDFILE ]; then
+    echo -n "Stopping $NAME... "
+    PID=$(cat $PIDFILE)
+    rm $PIDFILE
+    kill $PID
+    echo "OK"
+  else
+    echo "Service $NAME already stopped"
+    exit 1
+  fi
+}
+restart() {
+  stop
+  sleep 2
+  start
+}
+
+case "$1" in
+  start)
+    start
+  ;;
+  stop)
+    stop
+  ;;
+  restart|reload)
+    restart
+  ;;
+  status)
+  [ -f $PIDFILE ] && echo "$NAME is running." || echo "$NAME is stopped."
+  ;;
+  *)
+  echo $"Usage: $0 {start|stop|restart|status}"
+  exit 1
+esac
+
+exit $?

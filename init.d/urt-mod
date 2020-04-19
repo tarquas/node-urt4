@@ -1,6 +1,13 @@
 #!/bin/sh
+NAME="URT mod"
 DIR=/home/urt/node-urt4
 USER=urt
+SCRIPT=urt-mod
+
+setcap CAP_NET_BIND_SERVICE=+eip "$(readlink -f "$(which node)")"
+
+export DISCORD_BOT_TOKEN="" # for discord integration
+export GEOIP_ACCESS_KEY="" # for geo ip lookup integration
 
 ### BEGIN INIT INFO
 # Provides:          urt-mod
@@ -11,45 +18,4 @@ USER=urt
 # Short-Description: Starts URT mod.
 ### END INIT INFO
 
-PIDFILE=/tmp/urt-mod.pid
-
-start() {
-  echo -n "Starting URT mod... "
-  setcap CAP_NET_BIND_SERVICE=+eip "$(readlink -f "$(which node)")"
-  screen -dmS urt-mod su "$USER" -s /bin/bash -c "$DIR/urt-mod"
-  echo "OK"
-}
-stop() {
-  if [ -f $PIDFILE ]; then
-    echo -n "Stopping URT mod... "
-    PID=$(cat $PIDFILE)
-    rm $PIDFILE
-    kill $PID
-    echo "OK"
-  fi
-}
-restart() {
-  stop
-  sleep 2
-  start
-}
-
-case "$1" in
-  start)
-    start
-  ;;
-  stop)
-    stop
-  ;;
-  restart|reload)
-    restart
-  ;;
-  status)
-  [ -f $PIDFILE ] && echo "URT mod is running." || echo "URT mod is stopped."
-  ;;
-  *)
-  echo $"Usage: $0 {start|stop|restart|status}"
-  exit 1
-esac
-
-exit $?
+. "$DIR/urt-service"

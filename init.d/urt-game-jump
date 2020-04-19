@@ -1,0 +1,16 @@
+#!/bin/sh
+NAME="URT jump game"
+DIR=/home/urt/node-urt4
+USER=urt
+SCRIPT=urt-game-jump
+
+### BEGIN INIT INFO
+# Provides:          urt-game-jump
+# Required-Start:    $all
+# Required-Stop:
+# Default-Start:     2 3 4 5
+# Default-Stop:
+# Short-Description: Starts URT jump game.
+### END INIT INFO
+
+. "$DIR/urt-service"

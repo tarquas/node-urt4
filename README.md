@@ -22,6 +22,7 @@ This will automatically clone latest code of [Mickael9](https://github.com/micka
 
 ## Example installation as a service on Debian 10 (Buster)
 Below steps will set up 2 UrT servers: one for shooting modes (on default port) and one for jump mode (on port `1337`).
+
 1) Prepare APT resources for [MongoDB](https://docs.mongodb.com/manual/tutorial/install-mongodb-on-debian/):
 ```
 sudo apt update
@@ -29,51 +30,71 @@ sudo apt -y install gnupg2
 wget -qO - https://www.mongodb.org/static/pgp/server-4.2.asc | sudo apt-key add -
 echo "deb http://repo.mongodb.org/apt/debian buster/mongodb-org/4.2 main" | sudo tee /etc/apt/sources.list.d/mongodb-org-4.2.list
 sudo apt-get update
+sudo apt-get install mongodb-org
 ```
+
 2) Prepare APT resources for [Node.js](https://nodejs.org/en/download/package-manager/#debian-and-ubuntu-based-linux-distributions):
 ```
 wget -qO- https://deb.nodesource.com/setup_12.x | sudo -E bash -
+sudo apt-get install nodejs
 ```
-3) Install dependencies:
+
+3) Install other dependencies:
 ```
-sudo apt-get install build-essential gcc git libcap2-bin make mongodb-org nodejs screen unzip
+sudo apt-get install build-essential gcc git libcap2-bin make screen unzip
 ```
-4) Add user `urt` and run `bash` from this user:
+
+4) Add user `urt`.
 ```
-useradd -m urt
-su urt -s /bin/bash
+sudo useradd -s /bin/bash -m urt
 ```
-5) Clone this repo, compile the binary, and install NPM dependencies:
+
+5) Login to user `urt`, clone this repo, compile the binary, and install NPM dependencies:
+```
+sudo login -f urt
+```
+then:
 ```
 git clone --depth=1 "https://github.com/tarquas/node-urt4.git" ~/node-urt4
 cd ~/node-urt4
 make lib-release
 make run-prepare
 ```
+finally, exit from `urt` shell:
+```
+exit
+```
+
 6) Install and run the services:
 ```
 cp /home/urt/node-urt4/init.d/* /etc/init.d
 systemctl enable urt-mod
-systemctl enable urt-engine
-systemctl enable urt-engine-jump
+systemctl enable urt-game-guns
+systemctl enable urt-game-jump
 service urt-mod start
-service urt-engine start
-service urt-engine-jump start
+service urt-game-guns start
+service urt-game-jump start
 ```
 Consoles of service processes are available via `screen`:
-* for a mod: `screen -D -RR urt-mod`
-* for UrT server: `screen -D -RR urt-engine-guns`
-* for UrT jump server: `screen -D -RR urt-engine-jump`
+* for a mod:
+  `screen -x urt/urt-mod`
+* for UrT server:
+  `screen -x urt/urt-game-guns`
+* for UrT jump server:
+  `screen -x urt/urt-game-jump`
+
 7) Run the game and connect to your server. Go to mod console:
 ```
-screen -D -RR urt-mod
+screen -x urt/urt-mod
 ```
 Find your name in list of players and grant yourself administrator privileges (in example below your player is #2):
 ```
 list
 setlevel 2 admin
 ```
+
 8) Press `CTRL+A,D` to detach from mod console screen.
+
 9) In game console type `!help` (any of `.!@&/` may be used instead of `!`, but note that when using `/` some commands may be shadowed by client game engine f.x. `/map`).
 
 ## Details
