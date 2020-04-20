@@ -18,6 +18,7 @@ while [ true ]; do
       +set com_hunkmegs 512 \
       +set com_zonemegs 512 \
       +set dedicated 2 \
+      +set net_enabled 7 \
       +set net_port 1337 +set net_port6 1337 \
       +set fs_basepath . \
       +set fs_libpath . \

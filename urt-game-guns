@@ -17,6 +17,7 @@ while [ true ]; do
     lib/urt4-api-server.run 8888 . \
       +set com_hunkmegs 192 \
       +set dedicated 2 \
+      +set net_enabled 7 \
       +set net_port 27960 +set net_port6 27960 \
       +set fs_basepath . \
       +set fs_libpath . \
