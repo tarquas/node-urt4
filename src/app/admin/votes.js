@@ -410,7 +410,7 @@ class Votes extends Cmd {
       '  <game> -- exact game ID string as it appears in ^5!games^3 output.'
     ];
 
-    if (!as.auth) return `^1Error ^3Unauthorized players may not start the vote`;
+    //if (!as.auth) return `^1Error ^3Unauthorized players may not start the vote`;
 
     const {$players, $mod} = this.admin;
 
@@ -476,7 +476,7 @@ class Votes extends Cmd {
     return '^3This vote is disabled';
   }
 
-  async ['TMOD veto [<time>]: Disallow current voting and optionally disable voter for given time']({as, blames, args: [time]}) {
+  async ['TMOD+ veto [<time>]: Disallow current voting and optionally disable voter for given time']({as, blames, args: [time]}) {
     const votes = as.$votes;
     const vote = votes && (votes.active[0] || votes.voted[0]);
     if (!vote) return `^1Error ^3No vote in progress to cancel`;
@@ -539,11 +539,11 @@ Votes.secVotePublic = 20;
 Votes.weights = {
   any: 1,
   user: 2,
-  tmod: 3,
-  mod: 3,
-  sup: 4,
-  admin: 4,
-  console: 4
+  tmod: 2,
+  mod: 2,
+  sup: 2,
+  admin: 2,
+  console: 2
 };
 
 module.exports = Votes;

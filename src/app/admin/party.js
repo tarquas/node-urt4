@@ -10,29 +10,32 @@ class Party extends Cmd {
     this.scene = 0;
     this.partyOn = 0;
     this.musicEnds = 0;
+    this.funstuffs = this.$.make();
 
-    this.$players.on('user', this.soundBug.bind(this));
-    this.$qvm.on('begin', this.invitePlayer.bind(this));
-    this.$qvm.on('spawn', this.invitePlayer.bind(this));
+    this.$players.on('user', this.soundBug);
+    this.$qvm.on('begin', this.invitePlayer);
+    this.$qvm.on('spawn', this.invitePlayer);
 
-    this.$qvm.on('warmup', this.beginScene.bind(this, true));
+    this.$qvm.on('timelimit', this.beginScene);
+    this.$qvm.on('shutdown', this.onSilence);
 
-    this.$qvm.on('timelimit', this.beginScene.bind(this, false));
-    this.$qvm.on('shutdown', this.onSilence.bind(this));
-
-    this.$qvm.on('world', this.endScene.bind(this));
-    this.$qvm.on('game', this.endScene.bind(this));
-    this.$qvm.on('round', this.onRound.bind(this));
-
-    this.partyDanceBound = this.partyDance.bind(this);
+    this.sv.on('cfg', this.checkPhase);
+    this.$qvm.on('game', this.endScene);
+    this.$qvm.on('round', this.endScene);
   }
 
-  async soundBug({client}) {
+  async checkPhase$({index, value}) {
+    if (index !== 5) return;
+    if (value === '0') return;
+    await this.beginScene(true);
+  }
+
+  async soundBug$({client}) {
     await this.$.delay(100);
     await this.invitePlayer({client});
   }
 
-  async invitePlayer({client}) {
+  async invitePlayer$({client}) {
     if (this.partyOn) await this.invitePlayers([client]);
   }
 
@@ -63,6 +66,39 @@ class Party extends Cmd {
     this.urt4.cmds(Object.entries(res).map(([k, v]) => `sv cfg ${k} ${v}`));
   }
 
+  static funstuffs = {
+    funred: 'touqrd',
+    funblue: 'touqbl',
+    funfree: 'touqrd',
+  };
+
+  async fakeFunstuff(clients) {
+    const fsa = [];
+
+    for (const c of clients) {
+      if (c in this.funstuffs) continue;
+      const p = this.$players.clients[c];
+      if (!p) continue;
+      const team = this.$.get(p.info2, 't');
+      if (team == 3) continue;
+      const obj = this.funstuffs[c] = this.$.make();
+
+      for (const [fun, stuff] of this.$.entries(this.$.funstuffs)) {
+        const fs = this.$.get(p.info, fun) || '';
+        obj[fun] = fs;
+        const fss = fs.split(',');
+
+        if (!fs) fss[0] = stuff;
+        else if (fss.length === 3) fss[2] = stuff;
+        else fss.push(stuff);
+
+        fsa.push(`sv clvar ${c} ${fun} ${fss.join(',')}`);
+      }
+    }
+
+    return fsa;
+  }
+
   async invitePlayers(clients) {
     if (!clients.length) return;
 
@@ -76,15 +112,21 @@ class Party extends Cmd {
     await this.$.all(clients.map(c => this.sendResources(c)));
 
     this.urt4.cmds(this.$.flatten(clients.map(c => [
-      `sv ps ${c} pos ${X+SX} ${Y+SY} ${Z+SZ} ang ${d.specAng.join(' ')} weapons${''.padEnd(32, ' 0')} items ${d.flags?(c&1)+1:0}${''.padEnd(30, ' 0')}`,
+      `sv ps ${c} pos ${X+SX} ${Y+SY} ${Z+SZ} ` +
+      `ang ${d.specAng.join(' ')} ` +
+      `weapons ${d.weapons.join(' ') + ''.padEnd(32-d.weapons.length, ' 0')} ` +
+      `items ${d.flags?(c&1)+1:0}${''.padEnd(30, ' 0')}`,
     ])));
  
     (async () => {
       await this.$.delay(200);
 
       if (this.interactive) {
+        const fsa = await this.fakeFunstuff(clients);
+
         this.urt4.cmds(this.$.flatten(clients.map(c => [
-          ...''.padEnd(10).split('').map(() => `sv svcmd ${c} print " "`),
+          ...fsa,
+          ...''.padEnd(2).split('').map(() => `sv svcmd ${c} print " "`),
           `sv svcmd ${c} print "     ${this.$.text.invite}"`,
           `sv svcmd ${c} cp "${this.$.text.welcome}"`,
           `sv svcmd ${c} cs 1001 " ${this.$.text.where}"`
@@ -202,7 +244,7 @@ class Party extends Cmd {
   putMore() {
   }
 
-  async beginScene(loop) {
+  async beginScene$(loop) {
     await this.$.delay(100);
 
     if (this.sceneDone) return;
@@ -253,10 +295,10 @@ class Party extends Cmd {
     })();
 
     this.anim = 0;
-    this.partyDanceBound(scene);
+    this.partyDance$(scene);
   }
 
-  async partyDance(scene) {
+  async partyDance$(scene) {
     if (this[this.$.instance].final) return;
     if (this.scene !== scene) return;
     const pp = this.partyParams;
@@ -293,7 +335,7 @@ class Party extends Cmd {
     })();*/
 
     if (++this.anim >= 64) this.anim = 0;
-    setTimeout(this.partyDanceBound, pp.music.beat, scene);
+    setTimeout(this.partyDance, pp.music.beat, scene);
   }
 
   putWeather() {
@@ -304,20 +346,31 @@ class Party extends Cmd {
     this.urt4.cmd(`com cvar 1 g_enablePrecip 0`);
   }
 
-  async endScene() {
+  async restoreFunstuff() {
+    const cmds = [];
+
+    for (const [slot, obj] of this.$.entries(this.funstuffs)) {
+      for (const [fun, stuff] of this.$.entries(obj)) {
+        cmds.push(`sv clvar ${slot} ${fun} ${stuff}`);
+      }
+    }
+
+    this.funstuffs = this.$.make();
+  }
+
+  async endScene$() {
     this.sceneDone = 0;
     this.newScene();
     await this.removeWeather();
+    await this.restoreFunstuff();
   }
 
-  async onSilence() {
+  async onSilence$() {
     this.musicEnds = 0;
   }
 
-  async onRound() {
-    const info = await this.urt4.$info.getServerInfo();
-    if (info.WarmupPhase === 'YES') await this.beginScene(true);
-    else await this.endScene();
+  async onRound$() {
+    await this.endScene();
   }
 }
 
@@ -377,7 +430,8 @@ Party.dancers = {
   ang: [[0, 135, 0], [0, 45, 0], [0, -45, 0], [0, -135, 0], [32, -112, 0]],
   model: [[1, 2], [2, 0], [1, 1], [2, 3], [1, 0]],
   player: [[0, 12], [0, 12], [0, 12], [0, 12], [0, 12]],
-  lightAmp: 70
+  lightAmp: 70,
+  weapons: [0],
 };
 
 module.exports = Party;

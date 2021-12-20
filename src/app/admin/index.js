@@ -8,6 +8,7 @@ const Dbg = require('./dbg');
 const DbgEnt = require('./dbg-ent');
 const Follow = require('./follow');
 const FunPak = require('./fun-pak');
+const FunStuff = require('./funstuff');
 const Hits = require('./hits');
 const Hitpoints = require('./hitpoints');
 const HitpointsCtf = require('./hitpoints-ctf');
@@ -148,7 +149,7 @@ Admin.levelNames = {
   any: '^3a guest',
   lamer: '^9known lamer',
   user: '^5known player',
-  tmod: '^4temporary moderator',
+  tmod: '^4trialist moderator',
   mod: '^2a moderator',
   sup: '^1a supervisor',
   admin: '^6administrator',

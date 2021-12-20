@@ -92,6 +92,11 @@ class Qvm extends Emitter {
     if (k) return this.emit('kill', {who: k[1] | 0, whom: k[2] | 0, mod: k[3] | 0});
   }
 
+  async pfx_Matc(s) {
+    const k = s.match(this.$.rxMatchStart);
+    if (k) return this.emit('matchStart', {mode: k[1]});
+  }
+
   async pfx_Shut(s) {
     if (s === this.$.sShutdown) return this.emit('shutdown', {});
   }
@@ -140,6 +145,7 @@ Qvm.rxHit = /^Hit: (\d+) (\d+) (\d+) (\d+):/
 Qvm.sHotpotato = 'Hotpotato:\n';
 Qvm.rxItemPick = /^Item: (\d+) (\w+)/;
 Qvm.rxKill = /^Kill: (\d+) (\d+) (\d+):/
+Qvm.rxMatchStart = /^MatchStart: (.+)\n/;
 Qvm.rxInitGame = /^InitGame: ([\S\s]*)\n/;
 Qvm.rxInitRound = /^InitRound: ([\S\s]*)\n/;
 Qvm.sShutdown = 'ShutdownGame:\n';

@@ -30,10 +30,26 @@ class Users extends Db.Mongo.Model {
   }
 
   getIpQuery(ip) {
-    const $in = (
-      [this.$.rxIp, this.$.rxIpC, this.$.rxIpB, this.$.rxIpA]
-      .map(rx => (ip.match(rx) || []) [0])
-    );
+    let $in;
+
+    if (ip.charAt(0) === '[') {
+      $in = [];
+      const parts = ip.split(':');
+      let s = '';
+      let l = parts.length - 1;
+
+      for (let i = 0; i < l; i++) {
+        s += parts[i] + ':';
+        $in.unshift(s);
+      }
+
+      $in.unshift(ip);
+    } else {
+      $in = (
+        [this.$.rxIp, this.$.rxIpC, this.$.rxIpB, this.$.rxIpA]
+        .map(rx => (ip.match(rx) || []) [0])
+      );
+    }
 
     return {ip: {$in}, auth: ''};
   }

@@ -10,11 +10,13 @@ SCREEN=$SCRIPT
 start() {
   if [ -f $PIDFILE ]; then
     echo "Service $NAME already running"
-    exit 1
   else
     echo -n "Starting $NAME... "
     su "$USER" -s /bin/bash -c "
-      screen -dmS $SCREEN \"$DIR/$SCRIPT\" && \
+      cd \"$DIR\" && \
+      screen -S $SCREEN -X echo Race || \
+      screen -T linux -h 10000 -UOa -dmS $SCREEN \"$DIR/$SCRIPT\" && \
+      screen -S $SCREEN -X termcapinfo xterm* ti@:te@ && \
       screen -S $SCREEN -X multiuser on && \
       screen -S $SCREEN -X acladd root
     " && echo "OK"
@@ -26,15 +28,15 @@ stop() {
     PID=$(cat $PIDFILE)
     rm $PIDFILE
     kill $PID
+    wait $PID
     echo "OK"
   else
     echo "Service $NAME already stopped"
-    exit 1
   fi
 }
 restart() {
   stop
-  sleep 2
+  sleep 4
   start
 }
 
@@ -53,7 +55,6 @@ case "$1" in
   ;;
   *)
   echo $"Usage: $0 {start|stop|restart|status}"
-  exit 1
 esac
 
 exit $?

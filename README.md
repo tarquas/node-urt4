@@ -83,6 +83,11 @@ Consoles of service processes are available via `screen`:
 * for UrT jump server:
   `screen -x urt/urt-game-jump`
 
+To take advantage of mousewheel and `Shift+PgUp/PgDn` scrolling inside the screen, use once:
+```
+echo "termcapinfo xterm* ti@:te@" | sudo tee -a /etc/screenrc
+```
+
 7) Run the game and connect to your server. Go to mod console:
 ```
 screen -x urt/urt-mod

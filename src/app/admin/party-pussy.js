@@ -13,8 +13,8 @@ class PartyPussy extends Party {
     super.putDancers();
   }
 
-  async partyDance(scene) {
-    await super.partyDance(scene);
+  async partyDance$(scene) {
+    await super.partyDance$(scene);
   }
 
   putTree() {

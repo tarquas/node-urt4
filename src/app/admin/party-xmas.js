@@ -58,8 +58,8 @@ class PartyXmas extends Party {
     ]);
   }
 
-  async partyDance(scene) {
-    await super.partyDance(scene);
+  async partyDance$(scene) {
+    await super.partyDance$(scene);
     if ((this.flashRot += 5) >= 180) this.flashRot = -180;
     const r = this.flashRot;
 
@@ -71,8 +71,8 @@ class PartyXmas extends Party {
     ]);
   }
 
-  async endScene() {
-    await super.endScene();
+  async endScene$() {
+    await super.endScene$();
     const d = this.$.dancers;
     this.urt4.cmds(d.pos.map((pos, i) => `sv ent ${d.ent + i} type 0 0 link 0`));
   }

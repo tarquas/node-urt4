@@ -6,6 +6,7 @@ const web = require('axios');
 class Players extends Cmd {
   async init(deps) {
     this.clients = {};
+    this.byAuth = {};
     this.ents = {};
     this.geoip = {};
 
@@ -20,6 +21,7 @@ class Players extends Cmd {
     this.$qvm.on('begin', this.onBegin.bind(this));
     this.$qvm.on('info', this.onInfo.bind(this));
     this.$qvm.on('info2', this.onInfo2.bind(this));
+    this.$qvm.on('matchStart', this.onMatchStartMode);
     this.sv.on('clcmd', this.onClCmd.bind(this), 1);
     this.sv.on('svcmd', this.onSvCmd.bind(this));
     this.sv.on('drop', this.onDrop.bind(this));
@@ -39,6 +41,17 @@ class Players extends Cmd {
 
   async getAuthStatus() {
     this.authEngine = (await this.urt4.rpc(`com getcvar auth`)) | 0;
+  }
+
+  static matchStartModeMsg = {
+    'Knife': '^1Knife round!^3',
+    'Pistol': '^4Pistol round!^3',
+    'All Weapons': '^2All Weapons!^3',
+  };
+
+  async onMatchStartMode$({mode}) {
+    const msg = this.$.matchStartModeMsg[mode];
+    if (msg) this.big(null, msg);
   }
 
   async onMap() {
@@ -116,6 +129,9 @@ class Players extends Cmd {
     if (!player) return;
     const ban = player.banned;
     if (ban) this.kick(player, await this.banReason(ban), await this.banReason(ban, true));
+
+    const demoFile = await this.getDemoFile(client);
+    player.demoFile = demoFile;
   }
 
   async onAuth(info, pwd) {
@@ -129,6 +145,8 @@ class Players extends Cmd {
     }
 
     player.auth = auth;
+    this.byAuth[auth] = player;
+
     await this.$db.$users.getUser(player);
 
     const now = +new Date();
@@ -246,7 +264,8 @@ class Players extends Cmd {
         cmd: {},
         sets: {},
         prefs: {},
-        dialogs: []
+        dialogs: [],
+        locVisited: new Set(),
       };
     }
   }
@@ -281,6 +300,10 @@ class Players extends Cmd {
     const ip = player.ip;
     player.localIp = this.$.rxIpLocal.test(ip);
 
+    const ipv4 = ip.match(this.$.rxIpV4);
+    const ipv6 = ip.match(this.$.rxIpV6);
+    player.ipv6 = !!ipv6;
+
     if (ip && !(ip in this.geoip)) {
       this.geoip[ip] = null;
 
@@ -290,7 +313,14 @@ class Players extends Cmd {
         const accessKey = this.$.get(config, 'ip', 'accessKey');
 
         if (accessKey) {
-          const res = await web.get(`http://api.ipstack.com/${ip}?access_key=${accessKey}`);
+          const ipArg = ipv6 ? ipv6[1] : ipv4 ? ipv4[1] : null;
+
+          const res = (
+            !ipArg ?
+            {country_name: 'invalid IP address'} :
+            await web.get(`http://api.ipstack.com/${ipArg}?access_key=${accessKey}`)
+          );
+
           this.geoip[ip] = res.data;
         }
       } catch (err) {
@@ -575,6 +605,8 @@ class Players extends Cmd {
   }
 
   async onSvCmd({cmd, client}) {
+    if (client < 0 && this.urt4.act) this.urt4.log(`ALL < ${cmd}`);
+
     const player = this.clients[client];
     if (!player || player.dropped) return;
 
@@ -594,7 +626,12 @@ class Players extends Cmd {
 
     if (this.urt4.act) this.urt4.log(`${this.ncname(player)} < ${cmd}`);
     const [, loc] = cmd.match(this.$.rxLocation) || [];
-    if (loc) player.location = +loc;
+
+    if (loc) {
+      const iLoc = loc | 0;
+      player.location = iLoc;
+      player.locVisited.add(iLoc);
+    }
   }
 
   async getLocationNames(locs) {
@@ -677,6 +714,28 @@ class Players extends Cmd {
     return nok;
   }
 
+  prettyAuth(addon, levelColor) {
+    const ents = addon.split(this.urt4.$.rxColor1);
+    let auth;
+
+    switch (ents.length) {
+      case 1: auth = `${levelColor}${ents[0]}`; break;
+      case 3: auth = `${levelColor}${ents[2]}`; break;
+      case 5: auth = `^${ents[1] == 4 ? 2 : 7}${ents[2]}${levelColor}${ents[4]}`; break;
+      case 7: auth = `^2${ents[2]}^7${ents[4]}${levelColor}${ents[6]}`; break;
+    }
+
+    return auth;
+  }
+
+  getLevelColor(p) {
+    const {$} = this.admin;
+    const levelId = $.levelIds[p.level] || 0;
+    const levelName = $.levelNames[levelId];
+    const levelColor = levelName.slice(0, 2);
+    return levelColor;
+  }
+
   prettifyAuth(player, p, srcAuth, embed) {
     const {$} = this.admin;
     let auth = srcAuth || p.auth || '';
@@ -684,26 +743,13 @@ class Players extends Cmd {
     let levelColor = '';
 
     if (!noAuthColor) {
-      const levelId = $.levelIds[p.level] || 0;
-      const levelName = $.levelNames[levelId];
-      levelColor = levelName.slice(0, 2);
+      levelColor = this.getLevelColor(p);
       auth = `${levelColor}${auth}`;
     }
 
     if (!this.urt4.getBoolean(this.$.get(player, 'prefs', 'noAuthAddon'))) {
       const addon = this.$.get(p, 'authInfo', 'addon');
-
-      if (addon) {
-        const ents = addon.split(this.urt4.$.rxColor1);
-
-        switch (ents.length) {
-          case 1: auth = `${levelColor}${ents[0]}`; break;
-          case 3: auth = `${levelColor}${ents[2]}`; break;
-          case 5: auth = `^${ents[1] == 4 ? 2 : 7}${ents[2]}${levelColor}${ents[4]}`; break;
-          case 7: auth = `^2${ents[2]}^7${ents[4]}${levelColor}${ents[6]}`; break;
-        }
-      }
-
+      if (addon) auth = this.prettyAuth(addon, levelColor);
       const tester = this.isTester(p);
       auth = `${p.donator ? '^2$' : ''}${tester ? '^2*' : ''}${auth}`;
     }
@@ -711,7 +757,8 @@ class Players extends Cmd {
     if (!this.urt4.getBoolean(this.$.get(player, 'prefs', 'noAuthGeo'))) {
       const geo = this.geoip[p.ip];
       const cc = geo && geo.country_code;
-      const geoInfo = ` ^7(${cc || '??'})`;
+      const m9 = this.$.get(p, 'info', 'cl_voipProtocol');
+      const geoInfo = ` ${p.ipv6 ? '^8' : '^9'}${m9 ? '[' : '('}${cc || '??'}${m9 ? ']' : ')'}`;
       auth = `${auth}${geoInfo}`;
     }
 
@@ -721,6 +768,23 @@ class Players extends Cmd {
 
     if (!auth) auth = '---';
     return auth;
+  }
+
+  async getDemoFile(client) {
+    const file = await this.urt4.rpc(`sv getdemofile ${client}`);
+    return file;
+  }
+
+  static rxDemoDirDateMap = /\/(.{19})_(.+)$/;
+  static rxDemoFileDateName = /^(.{19})_.+-([^-]*.)$/;
+
+  getDemoLink(file) {
+    if (!file) return null;
+    const {curDemoDir, serverId} = this.urt4;
+    const [, date, map] = curDemoDir.match(this.$.rxDemoDirDateMap);
+    const [, pfx, sfx] = file.match(this.$.rxDemoFileDateName);
+    const link = `/demo/${serverId}/${date}/${map}/${pfx}/${sfx}`;
+    return link;
   }
 
   // CMD
@@ -937,7 +1001,16 @@ class Players extends Cmd {
         if (player.banned) this.chat(as.client, `   ** ^3Banned by ^5${player.banned.byAuth}`);
       } else if (as.level >= this.admin.$.levels.sup || modeObj.mod.emitLoc) {
         const locName = $mod.locations[player.location];
-        if (locName) this.chat(as.client, `   \\ ^5On map:^3 ${locName}`);
+
+        if (locName) {
+          const nVisited = player.locVisited.size;
+          const nLoc = $mod.nLocations;
+
+          this.chat(as.client, [
+            `   \\ ^5On map:^3 ${locName}`,
+            `    \\ ^5Map completion: ^3${parseInt(100*nVisited/nLoc)} ^/.^5  Visited:^3 ${nVisited} of ${nLoc} locations`
+          ]);
+        }
       }
     }
   }
@@ -951,6 +1024,7 @@ class Players extends Cmd {
   async ['ADMIN+ rpc <...command>: RPC command to server (wrong may crash server!)']({as, args}) {
     const arg = args.join(' ');
     const res = await this.urt4.rpc(arg);
+    if (!res) return `^2RPC ^1NULL response`
     return [`^2RPC response:`].concat(res.split('\n'));
   }
 
@@ -1027,6 +1101,29 @@ class Players extends Cmd {
     this.chat(null, `^3Player ${this.name(p1)} has been moved to spectators`);
     blames.push(null);
     return 0;
+  }
+
+  async ['ANY+ follow <whom> [<who>]: Follow player / force spec to follow player']({as, args: [whom, who]}) {
+    const p1 = this.find(whom, as);
+    const p2 = this.find(who, as, true);
+
+    if (p2 !== as && as.level < this.admin.$.levels.mod) {
+      return `^1Error ^3You are not allow to force other players to follow`;
+    }
+
+    if (this.$.get(p2, 'info2', 't') != 3) {
+      if (p2 == as) return `^1Error ^5You^3 must be ^2spec^3 to follow others`;
+      return `^1Error ^3Player ${this.name(p2)}^3 must be ^2spec^3 to follow others`;
+    }
+
+    if (this.$.get(p1, 'info2', 't') == 3) {
+      return `^1Error ^3Can't follow ^2spectator ${this.name(p1)}`;
+    }
+
+    this.urt4.cmd(`sv clcmd ${p2.client} 1 follow ${p1.client}`);
+
+    if (p2 == as) return `^3Now ^5you^3 are following ${this.name(p1)}`;
+    return `^3Now player ${this.name(p2)}^3 is following ${this.name(p1)}`;
   }
 
   async ['MOD+ swap <player1> [<player2>]: Exchange players in different teams. Exchange yourself with player in different team']({as, blames, args: [player1, player2]}) {
@@ -1110,11 +1207,13 @@ class Players extends Cmd {
 
 Players.rxCfgsItem = /^(\d+) (.*)$/;
 Players.rxCustomCmd = /^\w+/;
-Players.rxIp = /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}/;
-Players.rxIpLocal = /^127\.|^10\.|^192\.168\.|^172\.(1[6-9]|2|3[01])\./;
+Players.rxIp = /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}|\[[:\w]+\]/;
+Players.rxIpLocal = /^127\.|^10\.|^192\.168\.|^172\.(1[6-9]|2|3[01])\.|^\[::1\]/;
 Players.rxIpA = /^\d{1,3}\./;
 Players.rxIpB = /^\d{1,3}\.\d{1,3}\./;
 Players.rxIpC = /^\d{1,3}\.\d{1,3}\.\d{1,3}\./;
+Players.rxIpV4 = /^(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})/;
+Players.rxIpV6 = /^\[([:\w]+)\]/;
 Players.rxQuotes = /"/g;
 Players.rxSayCmd = /^(say|sayteam)\s+("?)[!@&\/\\.]([\S\s]+?)$/;
 Players.rxSayTellCmd = /^tell\s+\S+\s+[!@&\/\\.]([\S\s]+?)$/;

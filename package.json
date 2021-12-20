@@ -1,6 +1,6 @@
 {
   "name": "node-urt4",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "A game mod for Node.js of Urban Terror 4 game.",
   "main": "src/app/index.js",
   "directories": {
@@ -22,10 +22,12 @@
   "author": "Taras Mykhailovych",
   "license": "MIT",
   "dependencies": {
+    "@maxmind/geoip2-node": "^3.3.0",
     "axios": "^0.19.2",
-    "clasync": "^0.9.1",
-    "discord.js": "^12.2.0",
+    "clasync": "^0.10.10",
+    "discord.js": "^12.5.3",
+    "fast-glob": "^3.2.7",
     "math3d": "^0.2.2",
-    "shell-quote": "^1.7.2"
+    "shell-quote": "^1.7.3"
   }
 }

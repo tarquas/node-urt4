@@ -3,6 +3,7 @@ const net = require('net');
 const child = require('child_process');
 
 const {App, Thread} = require('clasync');
+const WebApiHub = require('./web/api');
 const DbHub = require('./db');
 const DiscordBot = require('./ints/discord');
 
@@ -18,6 +19,7 @@ class Main extends App {
     this.nextUrt4Id = 0;
 
     await deps({
+      $api: WebApiHub.new(this.web.api),
       $db: DbHub.new(this.db),
       $landing: Thread.Pool.new({filename: `${__dirname}/web/landing/thread.js`, min: 1, max: 1}),
       $discordBot: DiscordBot.new(this.discordBot)
@@ -65,6 +67,19 @@ class Main extends App {
     });
 
     this.server.listen(this.port, '127.0.0.1');
+  }
+
+  getServersByType(type) {
+    const servers = [];
+
+    for (const urt4 of Object.values(this.urt4s)) {
+      switch (type) {
+        case 'war': case 'gun': if (urt4.admin.$mod.gametype != 9) servers.push(urt4); break;
+        case 'jump': if (urt4.admin.$mod.gametype == 9) servers.push(urt4); break;
+      }
+    }
+
+    return servers;
   }
 
   async sendCmd(rawcmd) {

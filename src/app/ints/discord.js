@@ -1,4 +1,4 @@
-const {Emitter} = require('clasync');
+const {$, Emitter} = require('clasync');
 const Discord = require('discord.js');
 
 class DiscordBot extends Emitter {
@@ -31,11 +31,69 @@ class DiscordBot extends Emitter {
     return msgs;
   }
 
+  static escape(text) {
+    const unescaped = text.replace(/\\(\*|_|`|~|\\)/g, '$1'); // unescape any "backslashed" character
+    const escaped = unescaped.replace(/(\*|_|`|~|\\)/g, '\\$1'); // escape *, _, `, ~, \ 
+    return escaped;
+  }
+
+  demoLink$(p) {
+    if (!p.demo) return null;
+    return `[${p.AUTH === '---' ? this.$.escape(p.NAME) : ' : \`' + this.$.escape(p.auth) + '\`'}](${this.$$.apiUrl}${p.demo})`;
+  }
+
+  static rxDcDemoDateName = /\/(\d{4})-(\d{2})-(\d{2})_(\d{2})-(\d{2})-(\d{2})\/([^\/]+)$/;
+  static dateWeekOpts = {weekday: 'short'};
+
+  static dateAnyOpts = {
+    year: 'numeric', month: 'short', day: 'numeric',
+    hour12: false, hour: 'numeric', minute: '2-digit',
+  };
+
+  dcDemoLink(urt4, file) {
+    const demo = urt4.admin.$players.getDemoLink(file);
+    const [, y, m, d, h, i, s, name] = demo.match(this.$.rxDcDemoDateName);
+    const dt = new Date(y, m-1, d, h, i, s);
+    const now = new Date();
+    const diff = now - dt;
+    const tm = `${h}:${i}`;
+
+    let ds;
+    if (diff < 18*3600000) ds = `${tm}`;
+    else if (diff < 7*24*3600000) ds = `${dt.toLocaleString('en', {weekday: 'short'})} ${tm}`;
+    else ds = dt.toLocaleString('en', this.$.dateAnyOpts);
+
+    return `[${this.$.escape(name)} (${this.$.escape(ds)})](${this.$$.apiUrl}${demo})`;
+  }
+
+  embedMultiFields(title, arr) {
+    let t = title;
+    const res = [];
+    const s = [];
+    let l = 0;
+
+    for (const item of arr) {
+      s.push(item);
+      l += item.length;
+
+      if (l > 1024) {
+        const L = s.length - 1;
+        const S = s.splice(0, L);
+        res.push({name: t, value: S.join('; '), inline: false});
+        t = '...';
+        l = s[0].length;
+      }
+    }
+
+    if (s.length) res.push({name: t, value: s.join('; '), inline: false});
+    return res;
+  }
+
   async viewServerInfo(info) {
     const {
       playersByTeam, playerView, ratingKeys, ratingSort, ipAddress, port, name,
       nextmode, mode, map, nextmap, max, maxgame, modeDesc,
-      gameObj, Players, Scores, GameType, gametype
+      gameObj, Players, Scores, GameType, gametype, dcDemos, urt4,
     } = info;
 
     const result = [];
@@ -62,6 +120,11 @@ class DiscordBot extends Emitter {
       //playerHeader[1][rating] = ''.padEnd(rating.length, '_');
     }
 
+    const demos = this.embedMultiFields('DEMOS of Connected players', info.playersObj.map(this.demoLink).filter($.echo));
+
+    const dcDemoLink = this.dcDemoLink.bind(this, urt4);
+    const dcdemos = this.embedMultiFields('DEMOS of Disconnected players', dcDemos.map(dcDemoLink));
+
     const embed = {
       color: 0x0099ff,
       title: `${map} - ${mode.toUpperCase()}`,
@@ -83,7 +146,11 @@ class DiscordBot extends Emitter {
         url: this.$.gamemodeIcons[gametype] || this.$.gamemodeIcons.default,
       },
 
-      fields: Object.entries(gameObj).map(([name, value]) => ({name, value, inline: true})),
+      fields: [
+        ...Object.entries(gameObj).map(([name, value]) => ({name, value, inline: true})),
+        ...demos,
+        ...dcdemos,
+      ],
 
       timestamp: new Date(),
 
@@ -162,19 +229,6 @@ class DiscordBot extends Emitter {
     return reply;
   }
 
-  getServersByType(type) {
-    const servers = [];
-
-    for (const urt4 of Object.values(this.$$.urt4s)) {
-      switch (type) {
-        case 'war': case 'gun': if (urt4.admin.$mod.gametype != 9) servers.push(urt4); break;
-        case 'jump': if (urt4.admin.$mod.gametype == 9) servers.push(urt4); break;
-      }
-    }
-
-    return servers;
-  }
-
   async onMessage(msg) {
     if (msg.author.bot) return;
     if (msg.channel.type !== 'dm') return;
@@ -199,7 +253,7 @@ class DiscordBot extends Emitter {
 
     const role = this.$.getDef(caller, 'settings', 'level', 0);
 
-    const all = msg.content.toLowerCase();
+    const all = msg.content;
     const [cmd, ...args] = urt4.admin.parseArgs(all);
     const reply = [];
 
@@ -214,11 +268,17 @@ class DiscordBot extends Emitter {
     };
 
     if (role >= admin.$.levels.sup) {
-      switch (cmd) {
+      switch (cmd.toLowerCase()) {
+        case 'demo': {
+          const [mask] = args;
+          if (!mask) { reply.push('usage: **demo** <mask>|*'); break; }
+          reply.push('WIP');
+        } break;
+
         case 'restart': {
           const [type] = args;
-          if (!type) { reply.push('usage: **restart** war|gun|jump'); break; }
-          const servers = this.getServersByType(type);
+          if (!type) { reply.push('usage: **restart** war|gun|frag|jump'); break; }
+          const servers = this.$$.getServersByType(type.toLowerCase());
           if (!servers.length) { reply.push('No servers of this type found'); break; }
           for (const svr of servers) svr.cmd('com in quit');
           reply.push('Servers have been restarted');
@@ -229,7 +289,7 @@ class DiscordBot extends Emitter {
     }
 
     try {
-      switch (cmd) {
+      switch (cmd.toLowerCase()) {
         case 'auth': {
           const [auth, pwd] = args;
 
@@ -256,8 +316,15 @@ class DiscordBot extends Emitter {
           };
         } break;
 
+        case 'demo': {
+          const [mask] = args;
+          if (!mask) { reply.push('usage: **demo** <mask|*>'); break; }
+          reply.push('**Your demos**');
+          reply.push('*WIP*');
+        } break;
+
         case 'list': case 'servers': reply.push(...await this.getServersInfo()); break;
-        case 'war': case 'gun': reply.push(...await this.getServersInfo(urt4 => urt4.admin.$mod.gametype != 9)); break;
+        case 'war': case 'gun': case 'frag': reply.push(...await this.getServersInfo(urt4 => urt4.admin.$mod.gametype != 9)); break;
         case 'jump': reply.push(...await this.getServersInfo(urt4 => urt4.admin.$mod.gametype == 9)); break;
 
         case 'help': {
@@ -294,15 +361,17 @@ class DiscordBot extends Emitter {
             `Hello **${msg.author.username}**! You're ${levelName} **${caller ? caller.auth : ' '}**\n` +
             `i'm still on WIP, but something is ready for u now! check this:\n\n` +
             `**list** or **servers** - view information about our online servers\n` +
-            `**war** or **gun** - view information about our online shooting servers\n` +
+            `**war** or **gun** or **frag** - view information about our online shooting servers\n` +
             `**jump** - view information about our online jumping servers\n` +
+            `**demo** - get your demo\n` +
             `**help stat** - view information about terms used in player stats\n`
           );
 
           if (role >= admin.$.levels.sup) {
             reply.push(
               `**Admin commands**:\n` +
-              `**restart <type>** - restart servers based on type: **war** (**gun**) or **jump**\n`
+              `**demo** - get a demo\n` +
+              `**restart <type>** - restart servers based on type: **war** (**gun**, **frag**) or **jump**\n`
             );
           }
         } break;

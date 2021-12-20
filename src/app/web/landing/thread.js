@@ -9,7 +9,7 @@ class WebThread extends Thread {
 
   async init(deps) {
     await deps({
-      $web: WebHub.new({httpBind: 80})
+      $web: WebHub.new(this.web.landing)
     });
   }
 }

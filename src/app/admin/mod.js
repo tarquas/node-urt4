@@ -16,32 +16,42 @@ class Mod extends Cmd {
     this.maps = {};
     this.modes = {};
     this.sets = {};
+    this.ghostMask = -1;
 
     this.com.on('fs_restart', this.onMaps.bind(this));
     this.sv.on('cfg', this.onCfg.bind(this));
     this.sv.on('map', this.onMap.bind(this));
     this.com.on('in', this.onIn.bind(this));
     this.com.on('cvar', this.onCvar.bind(this));
+    this.$qvm.on('timelimit', this.onTimelimit);
 
     this.startup();
   }
 
   async startup() {
     await this.urt4.$info[this.$.ready];
+    await this.$players.getCfgMap();
 
     // get map list and modes
     this.matchSetting = this.matchSettingFunc.bind(this);
-    const mapsArr = await this.urt4.rpc('com getmaps ');
+
+    const [mapsArr, mode] = await this.urt4.rpcs(['com getmaps ', 'com getcvar nodeurt_mode']);
+
     const maps = mapsArr.split('\n');
     maps.shift();
+
     //await this.onMaps({maps});
     await this.urt4.com.emit('fs_restart', {maps});
 
     // get current map
     const map = await this.urt4.rpc('com getcvar mapname');
+
+    if (map === 'nomap') {
+      return this.setNextMode(mode);
+    }
+    
     //await this.onMap({map});
     await this.sv.emit('map', {map});
-    await this.$players.getCfgMap();
     await this.$players.initExistingClients();
 
     const info = await this.urt4.$info.getServerInfo();
@@ -162,26 +172,48 @@ class Mod extends Cmd {
     }
   }
 
+  async onTimelimit$() {
+    if (this.timelimitHit) return;
+    this.timelimitHit = true;
+    await this.emit('timelimit', {interrupt: null});
+  }
+
+  mapStats = Object.create(null);
+
   async onMap({map, keepHook}) {
     if (!keepHook) this.ignoreMapHook = false;
 
-    const [gametype, mode, name, locs] = await this.urt4.rpcs([
+    let mapStats = this.mapStats[map];
+    if (!mapStats) this.mapStats[map] = mapStats = {map, n: 0};
+    mapStats.n++;
+    mapStats.last = new Date();
+
+    const [gametype, mode, name, demoDir, id, curDemoDir, locs] = await this.urt4.rpcs([
       'com getcvar g_gametype',
       'com getcvar nodeurt_mode',
       'com getcvar sv_hostname',
-      'sv getcfgs 640 1000'
+      'com getcvar sv_demofolder',
+      'com getcvar nodeurt_id',
+      'sv getdemopfx',
+      'sv getcfgs 640 1000',
     ]);
 
     this.urt4.name = name;
+    this.urt4.serverId = id;
+    this.urt4.demoDir = demoDir;
+    this.urt4.curDemoDir = curDemoDir;
     this.gametype = gametype;
+
     this.locations = await this.$players.getLocationNames(locs);
+    this.nLocations = 0;
+    for (const key in this.locations) this.nLocations++;
+
+    for (const p of this.$.values(this.$players.clients)) {
+      if (p.locVisited) p.locVisited.clear();
+    }
 
     if (!this.map) {
       await this.modesRestrictedAdjust();
-    }
-
-    if (map === 'nomap') {
-      return this.setNextMode(mode);
     }
 
     this.map = map;
@@ -198,14 +230,26 @@ class Mod extends Cmd {
       this.setMaps(this.allMaps);
     }
 
-    const isNextMap = await this.urt4.rpc('com getcvar g_nextmap');
+    const [isNextMap, demo] = await this.urt4.rpcs([
+      `com getcvar g_nextmap`,
+      `com getcvar sv_autorecorddemo`,
+    ]);
+
+    const demoCmd = [];
+
+    if (demo && demo != 0) {
+      demoCmd.push(`com in startserverdemo all`);
+    }
 
     if (!isNextMap) {
       const nextmap = this.findNextMap(map, mode);
       if (nextmap) this.setNextMap(nextmap);
     }
 
-    this.urt4.cmd(`com cvar 1 nodeurt_curmode ${mode}`);
+    this.urt4.cmds([
+      `com cvar 1 nodeurt_curmode ${mode}`,
+      ...demoCmd,
+    ]);
 
     this.urt4.log(`^^ gametype ${this.gametype} map ${map} mode ${modeObj ? mode : 'unknown'}`);
     this.emit('map', {gametype: this.gametype, map: this.map});
@@ -214,10 +258,19 @@ class Mod extends Cmd {
   findNextMap(map, mode) {
     const modeObj = this.modes[mode];
     const maps = modeObj ? modeObj.maps : this.allMaps;
+
+    /* OLD: next on mapcycle
     const index = maps.indexOf(map);
     if (index < 0) return maps[0];
     const nextmap = maps[index + 1];
     if (!nextmap) return maps[0];
+    */
+
+    const mapStats = maps.map(map => this.mapStats[map] || {map});
+    mapStats.sort(() => Math.random() - .5);
+    mapStats.sort((a, b) => !b.last ? 1 : !a.last ? -1 : a.last - b.last);
+    const nextmap = mapStats[0].map;
+
     return nextmap;
   }
 
@@ -293,7 +346,7 @@ class Mod extends Cmd {
     }
   }
 
-  setNextMode(mode) {
+  setNextMode(mode, nextmap) {
     const modeObj = this.modes[mode];
     if (!modeObj) return null;
 
@@ -307,7 +360,9 @@ class Mod extends Cmd {
     //this.setMaps(modeObj.maps);
     this.maps = modeObj.mapObjs;
 
-    const nextmap = this.findNextMap(this.map, mode);
+    if (nextmap) nextmap = this.findMap(nextmap);
+    else nextmap = this.findNextMap(this.map, mode);
+
     if (!nextmap) return modeObj;
 
     if (this.map) this.setNextMap(nextmap);
@@ -331,12 +386,30 @@ class Mod extends Cmd {
 
   async changeMap(map) {
     const {$players} = this;
-    const mode = await this.urt4.rpc(`com getcvar nodeurt_mode`);
+
+    const [mode, demo] = await this.urt4.rpcs([
+      `com getcvar nodeurt_mode`,
+      `com getcvar sv_autorecorddemo`,
+    ]);
+
     const modeObj = this.modes[mode];
     const modeDesc = modeObj ? modeObj.desc : 'unknown mode';
     $players.chat(null, `^3Changing map to ^5${map}^3 at ^2${modeDesc}`);
-    this.urt4.cmd('com in bigtext "^2Please wait!"');
-    this.urt4.cmd('sv cfg 1001 "^2... ^1map is loading ^2..."');
+
+    const demoCmd = [];
+
+    if (demo && demo != 0) {
+      demoCmd.push(`com in stopserverdemo all`);
+    }
+
+    if (!this.timelimitHit) await this.emit('timelimit', {interrupt: 'map'});
+    this.timelimitHit = false;
+
+    this.urt4.cmds([
+      ...demoCmd,
+      'com in bigtext "^2Please wait!"',
+      'sv cfg 1001 "^2... ^1map is loading ^2..."',
+    ]);
 
     await this.$.delay(1000);
     this.urt4.cmd(`com in g_nextmap ${map}`);
@@ -376,7 +449,7 @@ class Mod extends Cmd {
     blames.push(null);
   }
 
-  async ['ANY+ game [<mode>]: Set next game mode / show next game mode']({as, blames, args: [mode]}) {
+  async ['ANY+ game [<mode>] [<map>]: Set next game mode+map / show next game mode+map']({as, blames, args: [mode, mapName]}) {
     const {$players} = this;
 
     if (!mode) {
@@ -396,9 +469,15 @@ class Mod extends Cmd {
 
     if (!await this.checkGameAccess(as, modeObj)) return this.admin.$.cmdErrors.access;
 
-    this.setNextMode(mode);
-    if (!modeObj) return this.listModes(mode, as);
+    this.setNextMode(mode, mapName);
+    //if (!modeObj) return this.listModes(mode, as);
     $players.chat(null, `^3Game mode for next map changed to ^2${modeObj.desc}`);
+
+    if (mapName) {
+      const map = this.findMap(mapName);
+      if (map) await this.changeMap(map);
+    }
+
     blames.push(null);
   }
 

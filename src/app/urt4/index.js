@@ -157,7 +157,7 @@ class Urt4 extends $ {
   }
 
   cmds(lines) {
-    this.socket.write(lines.map(line => `${line}\0`).join(''));
+    this.socket.write(this.$.mapArray(lines, line => `${line}\0`).join(''));
   }
 
   clientCfg(client, cfgId, value) {

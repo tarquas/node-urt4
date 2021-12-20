@@ -1,5 +1,6 @@
-const {Emitter} = require('clasync');
-var os = require('os');
+const {$, Emitter} = require('clasync');
+const os = require('os');
+const fs = require('fs');
 
 class Info extends Emitter {
   async init(deps) {
@@ -18,10 +19,20 @@ class Info extends Emitter {
       $discordBot: this.$$.$discordBot
     });
 
-    this.urt4.admin.$qvm.on('timelimit', this.onTimelimit.bind(this));
+    this.urt4.admin.$mod.on('timelimit', this.onTimelimit.bind(this));
   }
 
-  async onTimelimit() {
+  prettyName$(p, i) {
+    const escape = this.$discordBot.$.escape;
+    return ` ${i != null ? i+1+'. ' : ''}${escape(p.NAME)}${p.AUTH === '---' ? '' : ' : \`' + escape(p.auth) + '\`'}`;
+  }
+
+  static interruptReasons = {
+    map: 'map change',
+    quit: 'server restart',
+  };
+
+  async onTimelimit({interrupt}) {
     const chanId = await this.urt4.rpc('com getcvar nodeurt_discordchan');
     const {client} = this.$discordBot;
     if (!client) return;
@@ -32,14 +43,14 @@ class Info extends Emitter {
     const info = await this.getServerInfo();
     if (!info.nextmap) return; // skip final trigger after intermission
 
+    if (!info.playersObj.length && !info.dcDemos.length) return; // do not show empty games
+
     const msgs = await this.$discordBot.viewServerInfo(info);
 
-    msgs.push(`Top 3 Best Players: \n${
-      info.playersObj
-      .slice(0, 3)
-      .map((p, i) => ` ${i+1}. ${p.NAME}${p.AUTH === '---' ? '' : ' : ' + p.auth}`)
-      .join('\n')
-    }`);
+    const top = info.playersObj.slice(0, 3).map(this.prettyName).join('\n');
+
+    msgs.push(`Game ${interrupt ? 'interrupted by ' + this.$.interruptReasons[interrupt] : 'finished'}.${
+    top.length ? `\nTop 3 Best Players: \n${top}` : ''}`);
 
     for (const item of msgs) {
       //console.log(item);
@@ -47,7 +58,7 @@ class Info extends Emitter {
     }
   }
 
-  async getServerInfo() {
+  async getServerInfo(opts = {}) {
     const [nextmode, mode, nextmap, max, maxgame, port, plOut] = await this.urt4.rpcs([
       'com getcvar nodeurt_mode',
       'com getcvar nodeurt_curmode',
@@ -92,6 +103,8 @@ class Info extends Emitter {
 
     let ratingKeys = [], ratingSort;
 
+    const cdemos = new Set();
+
     for (const obj of playersObj) {
       const [id, name] = this.$.firstEntry(obj);
       delete obj[id];
@@ -108,8 +121,23 @@ class Info extends Emitter {
       obj.ID = id;
       obj.NAME = name;
 
-      const player = this.urt4.admin.$players.clients[obj.ID];
-      obj.auth = !player ? obj.AUTH : this.urt4.noColor(this.$.get(player, 'authInfo', 'addon') || player.auth || ' ');
+      const {$players} = this.urt4.admin;
+      const player = $players.clients[obj.ID];
+
+      if (player) {
+        const addon = this.$.get(player, 'authInfo', 'addon');
+        const lc = opts.color ? $players.getLevelColor(player) : '';
+
+        if (!addon) {
+          obj.auth = `${lc}${player.auth || ' '}`;
+        } else if (opts.color) {
+          obj.auth = $players.prettyAuth(addon, lc);
+        } else {
+          obj.auth = this.urt4.noColor(addon);
+        }
+      } else {
+        obj.auth = obj.AUTH;
+      }
 
       if (name.length > playerView.nameLength) playerView.nameLength = name.length;
       if (obj.auth.length > playerView.authLength) playerView.authLength = obj.auth.length;
@@ -119,6 +147,9 @@ class Info extends Emitter {
       for (const [rating, weight] of Object.entries(ratingSort)) {
         obj.sortValue -= obj[rating] * weight;
       }
+
+      obj.demo = $players.getDemoLink(player.demoFile);
+      cdemos.add(player.demoFile);
     }
 
     const playersByTeam = this.$.groupBy(playersObj, 'TEAM');
@@ -132,11 +163,21 @@ class Info extends Emitter {
     const {ipAddress} = this;
     const gametype = this.urt4.admin.$mod.gametype;
 
+    let dcDemos;
+
+    try {
+      dcDemos = await $.promisify(fs, 'readdir')(`q3ut4/${this.urt4.curDemoDir}`);
+      dcDemos = dcDemos.map(s => s.endsWith('.urtdemo') ? s.substr(0, s.length - 8) : null).filter(v => v && !cdemos.has(v));
+    } catch (err) {
+      if (err.code !== 'ENOENT') throw err;
+      dcDemos = [];
+    }
+
     return {
       playersByTeam, playerView, ratingKeys, ratingSort, ipAddress, port, name,
       nextmode, mode, map, nextmap, max, maxgame, modeDesc,
       gameObj, playersObj, Players, Scores, GameType, gametype,
-      MatchMode, WarmupPhase, Map, GameTime
+      MatchMode, WarmupPhase, Map, GameTime, dcDemos, urt4: this.urt4,
     };
   }
 }

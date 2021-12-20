@@ -16,6 +16,16 @@ extern "C" {
     Urt4_Hook(intptr_t, SV_GameSystemCalls, (intptr_t *args));
   #endif
 
+	#ifdef FILE_sv_ccmds
+		struct client_s;
+		static void SVD_CleanPlayerName(char *name);
+		void SV_StopRecordOne(struct client_s *client);
+		void urt4_cleanName(char *name) { SVD_CleanPlayerName(name); }
+		void urt4_stopDemo(struct client_s *client) { SV_StopRecordOne(client); }
+		Urt4_Hook(void, SV_StartRecordOne, (struct client_s *client, char *filename));
+		Urt4_Hook(void, SV_StopRecordOne, (struct client_s *client));
+  #endif
+
 	#ifdef FILE_sv_client
 		struct client_s;
 		struct usercmd_s;

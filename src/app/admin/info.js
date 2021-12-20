@@ -6,24 +6,22 @@ class Info extends Cmd {
       ...this.$.pick(this.admin, '$qvm', '$mod', '$players')
     });
 
-    this.$qvm.on('spawn', this.onSpawn.bind(this));
+    this.$players.on('team', this.onTeam.bind(this));
   }
 
-  async onSpawn({client}) {
-    const player = this.$players.clients[client];
-    if (!player) return;
-
+  async onTeam({player, teamId}) {
+    if (teamId !== 'spec') return;
     if (this.$.get(player, 'prefs', 'noShowTips')) return;
-    if (this.$.get(player, '$info', 'tipsShown')) return;
+    //if (this.$.get(player, '$info', 'tipsShown')) return;
 
     this.$players.chat(player, [
-      '^2Tip:^3 Write ^5!help^3 to list available commands',
-      '^2Tip:^3 Use ^5!prefs^3 to view/adjust your preferences',
-      '^2Tip:^3 Please read and respect our ^5!rules',
-      '^2Tip:^3 Join our Discord. Please visit: http://^5pwnz.pro^3/'
+      '', '', '', '^3   W E L C O M E  ^5T O  P W N Z  !', '', '',
+      '^7Quick commands: ^5!help^3 ; ^5!prefs^3 ; ^5!rules^3 ; ^5!vote^7 or use game menu^3',
+      '^6E-]^7 Join our ^6Discord^7 -- please visit: ^3http://^5pwnz.pro',
+      '^7Download ^6DEMOS^7 from ^5#game-chat^7 channel or PM our bot with ^2frag^7 or ^2jump',
     ]);
 
-    this.$.set(player, '$info', 'tipsShown', true);
+    //this.$.set(player, '$info', 'tipsShown', true);
   }
 
   async getRule(id) {

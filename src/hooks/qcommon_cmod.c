@@ -5,13 +5,15 @@
 
 int shader_clip = -1;
 
+static cvar_t *cvarCModUnleash = 0;
+
 Urt4_Hook(void, CMod_LoadBrushes, (lump_t *l)) {
 	urt4_CMod_LoadBrushes(l);
 	int bri, sidei;
 	cbrush_t *br;
 	cbrushside_t *side;
 
-	cvar_t *cvarCModUnleash = Cvar_Get("nodeurt_cmod_unleash", "0", 0);
+	if (!cvarCModUnleash) cvarCModUnleash = Cvar_Get("nodeurt_cmod_unleash", "0", 0);
 
 	// mod_unleash
 	int ul_ok;

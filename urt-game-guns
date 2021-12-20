@@ -1,44 +1,17 @@
 #!/bin/bash -i
 
-PIDFILE=/tmp/urt-game-guns.pid
-
-while [ true ]; do
-  if [ -f $PIDFILE ]; then
-    kill `cat $PIDFILE`
-  fi
-
-  sleep 1
-
-  (
-    cd $(dirname $0)
-
-    set -m
-
-    lib/urt4-api-server.run 8888 . \
-      +set com_hunkmegs 192 \
-      +set dedicated 2 \
-      +set net_enabled 7 \
-      +set net_port 27960 +set net_port6 27960 \
-      +set fs_basepath . \
-      +set fs_libpath . \
-      +set fs_homepath . \
-      +set sv_maxclients 20 \
-      +set sv_hostname "^3pwnz^5.pro" \
-      +set nodeurt_modes bomb ctf ctf.fun ctf.uz ffa ffa.unleash freeze ts ts.fun ts.uz \
-      +set nodeurt_mode ctf \
-      +set nodeurt_discordchan 649944374381379584 \
-      +exec server \
-      <&0 &echo $! > $PIDFILE
-
-    PID=`cat $PIDFILE`
-    fg
-    wait $PID
-    echo Process exited with $?
-  )
-
-  if [ ! -f $PIDFILE ]; then
-    exit 0
-  fi
-
-  rm $PIDFILE
-done
+. urt-forever urt-game-guns "" "lib/urt4-api-server.run 8888 .
+    +set com_hunkmegs 192
+    +set dedicated 2
+    +set net_enabled 7
+    +set net_port 27960 +set net_port6 27960
+    +set fs_basepath .
+    +set fs_libpath .
+    +set fs_homepath .
+    +set sv_maxclients 20
+    +set nodeurt_id pwnz-frag
+    +set sv_hostname \"^3pwnz^5.pro ^1frag\"
+    +set nodeurt_modes bomb ctf ctf.fun ctf.uz ffa ffa.unleash fun freeze ts ts.fun ts.uz
+    +set nodeurt_mode ctf.fun
+    +set nodeurt_discordchan 649944374381379584
+    +exec server"

@@ -84,7 +84,7 @@ class Punish extends Cmd {
 
   // CMD
 
-  async ['MOD+ ban <player> [<time|"permanent"> <reason|rule>]: Bans a player / checks a ban'](
+  async ['TMOD+ ban <player> [<time|"permanent"> <reason|rule>]: Bans a player / checks a ban'](
     {as, blames, args: [player, time, ...reasons]}
   ) {
     if (!player) return this.admin.$.cmdErrors.help;
@@ -140,6 +140,7 @@ class Punish extends Cmd {
         `${this.$players.name(p)} ^3has been banned ^5permanently^3. Reason: ^2${await this.$players.wrapReason(reason, true)}`);
     } else {
       const msec = this.urt4.getTimeSpan(time);
+      if (msec <= 0) return `^1Error ^3bad ^5time^3 value: ${time}`;
 
       if (msec > lvlMsec) return `^1Error ^3Maximum ban period you may set is ^2${this.urt4.showTimeSpan(lvlMsec)}`;
 
@@ -212,7 +213,7 @@ class Punish extends Cmd {
     return `^3Your cheat mode changed to ${value ? '^2ON' : '^1OFF'}`;
   }
 
-  async ['MOD+ banlist [<before>]: List last bans (or before some date YYYY-MM-DD)']({as, blames, args: [before]}) {
+  async ['TMOD+ banlist [<before>]: List last bans (or before some date YYYY-MM-DD)']({as, blames, args: [before]}) {
     const ban = 'settings.punish.ban';
     const since = `${ban}.since`;
     const query = {};
@@ -258,7 +259,10 @@ class Punish extends Cmd {
     const p = this.$players.find(player, as, true);
     if (p.level >= as.level) blames.push(p);
     const now = +new Date();
+
     const msec = this.urt4.getTimeSpan(time);
+    if (msec <= 0) return `^1Error ^3bad ^5time^3 value: ${time}`;
+
     const lvl = this.admin.$.levelNames[as.level];
     const lvlMsec = this.$.levelMsecLimits[lvl];
 
@@ -423,7 +427,7 @@ class Punish extends Cmd {
 }
 
 Punish.levelMsecLimits = {
-  tmod: 10 * 60 * 1000,
+  tmod: 30 * 60 * 1000,
   mod: 7 * 24 * 60 * 60 * 1000,
   sup: 50 * 7 * 24 * 60 * 60 * 1000,
   admin: 5000 * 7 * 24 * 60 * 60 * 1000,

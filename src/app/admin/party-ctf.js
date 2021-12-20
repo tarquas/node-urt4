@@ -65,8 +65,8 @@ class PartyCtf extends Party {
     ]);
   }
 
-  async partyDance(scene) {
-    await super.partyDance(scene);
+  async partyDance$(scene) {
+    await super.partyDance$(scene);
     if ((this.flashRot += 5) >= 180) this.flashRot = -180;
     const r = this.flashRot;
 
@@ -78,7 +78,7 @@ class PartyCtf extends Party {
     ]);
   }
 
-  async endScene() {
+  async endScene$() {
     await super.endScene();
     const d = this.$.dancers;
     this.urt4.cmds(d.pos.map((pos, i) => `sv ent ${d.ent + i} type 0 0 link 0`));
@@ -87,7 +87,7 @@ class PartyCtf extends Party {
 
 PartyCtf.mapParams = {
   ...Party.mapParams,
-  ut4_tohunga_b8: {pos: [-1290, 1421, 324], music: 'main'},
+  //ut4_tohunga_b8: {pos: [-1290, 1421, 324], music: 'main'},
   ut4_orbital_sl: null,
   ut4_village: null,
   ut4_abbey: null,
@@ -96,7 +96,7 @@ PartyCtf.mapParams = {
 
 PartyCtf.text = {
   ...Party.text,
-  welcome: '^5Welcome ^3to the ^6WE LOVE CTF ^1party^6!',
+  welcome: '^5Welcome ^3to the ^6CHRISTMAS ^1PARTY^6!',
 };
 
 PartyCtf.dancers = {
@@ -105,6 +105,7 @@ PartyCtf.dancers = {
   lightEnt: 1000,
   type: [1, 0],
   flags: 1,
+  weapons: [16],
   player: Array(5).fill([64+2048+32768+2, 16]),
 
   playerEnts: [

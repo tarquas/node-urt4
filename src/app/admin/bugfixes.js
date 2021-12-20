@@ -10,6 +10,7 @@ class Bugfixes extends Emitter {
     this.$qvm.on('auth', this.onAuth.bind(this), true);
     this.$players.on('info2', this.onInfo2.bind(this));
     this.$players.on('user', this.onUser.bind(this));
+    this.$players.on('team', this.onTeam);
     this.sv.on('clcmd', this.onClCmd.bind(this));
     this.sv.on('svcmd', this.onSvCmd.bind(this), true);
     this.sv.on('drop', this.onDrop.bind(this), true);
@@ -19,6 +20,30 @@ class Bugfixes extends Emitter {
 
     this.specUpdateProc = this.specUpdate.bind(this);
     this.specUpdateProc();
+  }
+
+  getTeamCount() {
+    const pp = this.$players;
+    const res = {};
+
+    for (const player of this.$.values(pp.clients)) {
+      if (player.dropped) continue;
+      const team = pp.getTeamId(player.info2.t);
+      if (res[team]) res[team]++; else res[team] = 1;
+    }
+
+    return res;
+  }
+
+  async onTeam$({teamId}) {
+    const tc = this.getTeamCount();
+
+    if (!tc.red || !tc.blue) (async () => {
+      await this.$.delay(500);
+      this.urt4.cmd(`sv ent 927 type 79 0 event 32 0 0 1 link 1`);
+      await this.$.delay(1000);
+      this.urt4.cmd(`sv ent 927 type 0 0 event 0 0 0 0 link 0`);
+    })();
   }
 
   isHitReportFor(hit, c) {
@@ -250,9 +275,29 @@ class Bugfixes extends Emitter {
   async onSvCmd(args) {
     const {cmd, client} = args;
 
-    if (this.$.rxBadChallengeBroad.test(cmd)) {
-      // don't broadcast bad challenge now
+    if (this.$.rxAuth.test(cmd)) {
+      if (client < 0) {
+        const [, aName, aRole, aAddon] = cmd.match(this.$.rxAuthConnected) || [];
+
+        if (aAddon) {
+          const authChars = aAddon.match(this.$.rxAuthChars);
+          const player = this.$players.byAuth[authChars.join('')];
+
+          if (player) {
+            const svrRole = aRole ? aRole.substr(3) : null;
+            await this.$players.set(player, 'serverRole', svrRole);
+            if (svrRole) this.urt4.cmd(`sv svcmd -1 print "^5+ ${aAddon}: ${svrRole}"`);
+          }
+        }
+      }
+
+      // suppress all [auth] notifications
       return true;
+
+      if (this.$.rxAuthBadChallenge.test(cmd)) {
+        // don't broadcast bad challenge now
+        return true;
+      }
     }
 
     const {$players, $} = this;
@@ -281,7 +326,7 @@ class Bugfixes extends Emitter {
         const items = scoresCmd.match(this.$.rxScoresItems);
 
         if (items) {
-          const [, nScores, redCaps, blueCaps] = scoresHead.match(this.$.rxScoresHead) || [];
+          let [, nScores, red, blue] = scoresHead.match(this.$.rxScoresHead) || [];
           let ns = nScores ? nScores | 0 : 1;
 
           for (let i = 0; i < items.length; i++) {
@@ -316,13 +361,24 @@ class Bugfixes extends Emitter {
           }
 
           if (nScores) {
-            args.cmd = `scores ${ns} ${redCaps} ${blueCaps}${items.join('')}`;
+            const sg = {red, blue};
+            this.$players.emit('gamescore', sg);
+            args.cmd = `scores ${ns} ${sg.red} ${sg.blue}${items.join('')}`;
           } else {
             if (ns <= 0) return true;
             args.cmd = `${scoresHead}${items.join('')}`;
           }
         }
 
+        return false;
+      }
+
+      const [scoresg, red, blue] = cmd.match(this.$.rxScoresG) || [];
+
+      if (scoresg) {
+        const sg = {red, blue};
+        this.$players.emit('gamescore', sg);
+        args.cmd = `scoresg ${sg.red} ${sg.blue}`;
         return false;
       }
     }
@@ -333,7 +389,8 @@ class Bugfixes extends Emitter {
   async onDrop({client, reason, message, by}) {
     const {$players, $qvm} = this;
     const player = $players.clients[client];
-
+console.log('reason:', reason);
+console.log('message:', message);
     // allow auth login in local intranet
     if (by === 'auth' && player.localIp) {
       await $qvm.emit('auth', {client});
@@ -348,7 +405,12 @@ class Bugfixes extends Emitter {
   }
 }
 
-Bugfixes.rxBadChallengeBroad = /^print \"\^5\[auth\] \^7(.*) is \^1rejected\^7 for \^1bad challenge\^7 error\n"/;
+Bugfixes.rxAuth = /^print \"\^5\[auth\] /;
+Bugfixes.rxAuthConnected = /^print \"\^5\[auth\] \^7(.*)\^7( - .*)?\^7 -  account: \^7(.*)\^7 \"/;
+Bugfixes.rxAuthNone = /^print \"\^5\[auth\] \^7(.*)\^7 - \^7no account\^7 \"/
+Bugfixes.rxAuthBadChallenge = /^print \"\^5\[auth\] \^7(.*) is \^1rejected\^7 for \^1bad challenge\^7 error\n"/;
+Bugfixes.rxAuthChars = /[0-9A-Za-z]/g;
+Bugfixes.rxScoresG = /^scoresg (\d+) (\d+)/;
 Bugfixes.rxScoresCmd = /^(scores \d+ [\d-]+ [\d-]+|scoress|scoresd)( .*)$/;
 Bugfixes.rxScoresHead = /^scores (\d+) ([\d-]+) ([\d-]+)$/;
 Bugfixes.rxScoresItems = / ([\d-]+) ([\d-]+ [\d-]+ [\d-]+ [\d-]+ [\d-]+ [\d-]+ [\d-]+ [\d-]+ [\d-]+ [\d-]+ [\d-]+) (\w+|---)/g;
@@ -375,6 +437,25 @@ SVCMD 3 cs 24 "1383250"
 ~raw sv getcfg 24
 ~raw sv gettime
 ~raw sv gettime2
+
+///
+
+#1: SiNeS#0 < cp "Ten seconds until forced spectator mode!
+"
+
+
+reason: |RFA|*CaTwOmAn* rejected: bad challenge
+message: ^1Bad challenge^7 
+
+You can't connect to any server. Please ^1restart ^7your game to repair that. Check also that nobody else is using your authkey. You can request a new one at http://www.urbanterror.info/
+
+///
+
+ALL < print "^5[auth] ^7balalaika^7 - ^6Head Admin^7 -  account: ^7^3pwnz.^7.TarqUAs.^7 "
+ALL < print "^5[auth] ^7peek^7^7 -  account: ^7^7PEEK^7 "
+ALL < print "^5[auth] ^7tester^7 - ^7no account^7 "
+
+///
 
 HEALER MOD
 

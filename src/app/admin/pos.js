@@ -289,11 +289,16 @@ class Pos extends Cmd {
 
     const pos = this.$.get(as, 'pos', 'save', $mod.map, l);
     if (!pos) return `^1Error ^3Label ^5${l}^3 wasn't used as a save point on this map`;
-    $players.setPlayerState(pwho, pos);
+
+    const {location} = pos;
+
+    if (location) pwho.location = location.id;
+    $players.setPlayerState(pwho, this.$.omit(pos, 'location'));
     await this.regainStamina(pwho);
 
     if (pwho === as) {
-      $players.message(as, `^3loaded from ^5${l}`);
+      const locName = this.$.get(location, 'name') || $mod.locations[pwho.location];
+      $players.message(as, `^3loaded from ^5${l}^3: ^7${locName}`);
       return;
     }
 
@@ -336,6 +341,9 @@ class Pos extends Cmd {
     const state = await $players.getPlayerState(pwhom);
     const pos = this.getPosState(state);
     const l = label || 'default';
+
+    const loc = pwhom.location;
+    pos.location = {id: loc, name: this.$mod.locations[loc]};
 
     await $players.set(as, {[`pos.save.${$mod.map}.${l}`]: pos}, {raw: true});
 

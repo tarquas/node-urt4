@@ -8,6 +8,7 @@ module.exports = {
     desc: 'unknown mode',
 
     pre: {
+      g_antiwarp: 1,
       g_gametype: 0,
       g_matchmode: 0,
       g_followstrict: 0,
@@ -17,6 +18,7 @@ module.exports = {
     },
 
     post: {
+      sv_matchStart: 0,
       g_password: '',
       g_gear: '',
       g_maxrounds: 0,
@@ -25,7 +27,8 @@ module.exports = {
       capturelimit: 0,
       g_noDamage: 0,
       g_noVest: 0,
-      g_inactivity: 0
+      g_inactivity: 0,
+      sv_autoRecordDemo: 1,
     },
 
     mod: {
@@ -55,6 +58,14 @@ module.exports = {
 
     // TEMPLATES
 
+    frag: {
+      inherits: [],
+      pre: {},
+      post: {
+        bot_minplayers: 0,
+      }
+    },
+
     fun: {
       inherits: [],
       maps: funMaps
@@ -64,6 +75,12 @@ module.exports = {
       inherits: [],
       mapsAdd: ['ut4_paris_v2', 'ut4_uptown41'],
       mapsDel: ['ut4_paris', 'ut4_uptown']
+    },
+
+    icy: {
+      inherits: [],
+      pre: {sv_iceEverywhere: 1},
+      post: {sv_infiniteStamina: 1, g_enablePrecip: 2}
     },
 
     public: {
@@ -84,7 +101,7 @@ module.exports = {
     },
 
     unleash: {
-      inherits: [],
+      inherits: ['icy'],
       pre: {nodeurt_cmod_unleash: 1},
 
       mapsAdd: [
@@ -106,7 +123,7 @@ module.exports = {
 
     bomb: {
       enabled: true,
-      desc: 'public Bomb game',
+      desc: 'BOMB public',
       inherits: ['', 'public'],
 
       pre: {
@@ -119,24 +136,27 @@ module.exports = {
       },
 
       mapsAdd: [
+        'ut4_abbey',
         'ut4_prague',
         'ut4_orbital_sl',
         'ut4_beijing_b3',
         'ut4_kingdom',
+        'ut4_cache_b6',
         'ut4_mandolin',
         'ut4_bohemia',
         'ut4_algiers',
         'ut4_dust2_v2',
-        'ut4_cascade',
+        'ut4_casa',
+        'ut4_turnpike',
         'ut4_uptown',
         'ut4_sanc',
-        'ut4_facade_b5'
+        'ut4_facade_b5_fix'
       ]
     },
 
     'bomb.fun': {
       enabled: true,
-      desc: 'public Bomb custom maps',
+      desc: 'BOMB fun',
       maps: funMaps,
       inherits: ['bomb', 'fun'],
       nextmode: 'bomb'
@@ -144,19 +164,19 @@ module.exports = {
 
     'bomb.old': {
       enabled: true,
-      desc: 'public Bomb old school',
+      desc: 'BOMB oldschool',
       inherits: ['bomb', 'old']
     },
 
     'bomb.uz': {
       enabled: true,
-      desc: 'UZ match Team Survivor game',
+      desc: 'TS match UZ',
       inherits: ['bomb', 'uz']
     },
 
     ctf: {
       enabled: true,
-      desc: 'public Capture The Flag game',
+      desc: 'wave CTF public',
       inherits: ['', 'public'],
 
       pre: {
@@ -171,28 +191,29 @@ module.exports = {
       rules: rules.ctf,
 
       mapsAdd: [
-        'ut4_abbey',
         'ut4_turnpike',
-        'ut4_paris',
         'ut4_tohunga_b8',
+        'ut4_paris',
         'ut4_orbital_sl',
+        'ut4_abbey',
         'ut4_algiers',
+        'ut4_sarlat_alpha4',
         'ut4_beijing_b3',
         'ut4_uptown',
         'ut4_kingpin',
-        'ut4_village'
+        'ut4_village',
       ]
     },
 
     'ctf.uz': {
       enabled: true,
-      desc: 'UZ match Capture The Flag game',
+      desc: 'wave CTF match UZ',
       inherits: ['ctf', 'uz']
     },
 
     'ctf.fun': {
       enabled: true,
-      desc: 'public Capture The Flag custom maps',
+      desc: 'wave CTF fun',
       maps: funMaps,
       inherits: ['ctf', 'fun'],
       nextmode: 'ctf'
@@ -200,13 +221,13 @@ module.exports = {
 
     'ctf.old': {
       enabled: true,
-      desc: 'public Capture The Flag old school',
+      desc: 'wave CTF oldschool',
       inherits: ['ctf', 'old']
     },
 
     'ffa': {
       enabled: true,
-      desc: 'public Free For All game',
+      desc: 'FFA public',
       inherits: ['', 'public'],
 
       mapsAdd: [
@@ -222,20 +243,20 @@ module.exports = {
         'ut4_casa',
         'ut4_uptown',
         'ut4_riyadh',
-        'ut4_facade_b5',
+        'ut4_facade_b5_fix',
         'ut4_prague'
       ]
     },
 
     'ffa.unleash': {
       enabled: true,
-      desc: 'public Free For All unleashed',
+      desc: 'FFA unleashed',
       inherits: ['ffa', 'unleash']
     },
 
     freeze: {
       enabled: true,
-      desc: 'public Freeze Tag game',
+      desc: 'FREEZE public',
       inherits: ['ts'],
       pre: {g_gametype: 10},
       post: {g_inactivity: 180}
@@ -243,7 +264,7 @@ module.exports = {
 
     jump: {
       enabled: true,
-      desc: 'public Jump game',
+      desc: 'JUMP public',
       inherits: ['', 'public'],
 
       pre: {
@@ -251,10 +272,12 @@ module.exports = {
       },
 
       post: {
+        sv_matchStart: 0,
         timelimit: 0,
         g_noDamage: 1,
         g_noVest: 1,
-        g_inactivity: 0
+        g_inactivity: 0,
+        bot_minplayers: 0,
       },
 
       mod: {
@@ -273,8 +296,8 @@ module.exports = {
 
     ts: {
       enabled: true,
-      desc: 'public Team Survivor game',
-      inherits: ['', 'public'],
+      desc: 'TS public',
+      inherits: ['', 'public', 'frag'],
 
       pre: {
         g_gametype: 4,
@@ -288,24 +311,24 @@ module.exports = {
       mapsAdd: [
         'ut4_turnpike',
         'ut4_tohunga_b8',
-        'ut4_abbey',
-        'ut4_thingley',
+        'ut4_prague',
         'ut4_orbital_sl',
+        'ut4_abbey',
         'ut4_sanc',
         'ut4_beijing_b3',
         'ut4_kingdom',
         'ut4_austria',
         'ut4_casa',
         'ut4_uptown',
-        'ut4_cambridge_fixed',
-        'ut4_facade_b5',
-        'ut4_prague'
+        'ut4_cambridge_b1',
+        'ut4_pipeline_b3',
+        'ut4_derelict_b3',
       ]
     },
 
     'ts.fun': {
       enabled: true,
-      desc: 'public Team Survivor custom maps',
+      desc: 'TS fun',
       maps: funMaps,
       inherits: ['ts', 'fun'],
       nextmode: 'ts'
@@ -313,14 +336,26 @@ module.exports = {
 
     'ts.old': {
       enabled: true,
-      desc: 'public Team Survivor old school',
+      desc: 'TS oldschool',
       inherits: ['ts', 'old']
     },
 
     'ts.uz': {
       enabled: true,
-      desc: 'UZ match Team Survivor game',
+      desc: 'TS match UZ',
       inherits: ['ts', 'uz']
+    },
+
+    'ctf.icy': {
+      enabled: true,
+      desc: 'wave CTF all icy',
+      inherits: ['ctf', 'icy'],
+    },
+
+    'ts.icy': {
+      enabled: true,
+      desc: 'TS all icy',
+      inherits: ['ts', 'icy'],
     }
   }
 };

@@ -2,7 +2,10 @@
 
 #include <server/server.h>
 
+#undef STAT_HEALTH
 #define STAT_HEALTH 0
+
+#undef STAT_STAMINA
 #define STAT_STAMINA 9
 
 void apiSetPlayerState(int slot, const char *state) {

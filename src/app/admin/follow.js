@@ -6,20 +6,23 @@ class Follow extends Cmd {
       ...this.$.pick(this.admin, '$qvm', '$pos')
     });
 
-    this.$qvm.on('world', this.onWorld.bind(this), -1);
-    this.$pos.on('ent', this.onEnt.bind(this), -1);
-    this.$pos.on('ps', this.onPs.bind(this));
+    this.$qvm.on('world', this.onWorld, -1);
+    this.$pos.on('ent', this.onEnt, -1);
+    this.$pos.on('ps', this.onPs);
   }
 
-  async onWorld() {
+  async onWorld$() {
     this.urt4.cmd('sv followreset ');
   }
 
-  async onEnt({id, cur}) {
-    if (!cur) this.urt4.cmd(`sv followfree ${id}`);
+  async onEnt$({id, cur}) {
+    if (!cur) {
+      this.urt4.cmd(`sv followfree ${id}`);
+      await this.emit('free', {id});
+    }
   }
 
-  async onPs({id, prev, diff}) {
+  async onPs$({id, prev, diff}) {
     //if (diff) console.log(id, diff);
   }
 
